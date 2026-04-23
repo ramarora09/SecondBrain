@@ -1,0 +1,56 @@
+import os
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from routes import analytics, graph, image, query, study, summary, upload, youtube
+from services.analytics_service import get_system_status
+from services.database import initialize_database
+
+app = FastAPI(
+    title="AI Personal Knowledge Engine",
+    description="Production-ready Second Brain AI System",
+    version="2.0.0"
+)
+
+
+@app.on_event("startup")
+def startup():
+    initialize_database()
+
+
+allowed_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000",
+).split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in allowed_origins if origin.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "system_status": get_system_status()}
+
+
+app.include_router(upload.router, prefix="/api")
+app.include_router(image.router, prefix="/api")
+app.include_router(query.router, prefix="/api")
+app.include_router(youtube.router, prefix="/api")
+app.include_router(summary.router, prefix="/api")
+app.include_router(study.router, prefix="/api")
+app.include_router(graph.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
+
+
+static_dir = Path(__file__).resolve().parent / "static"
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
