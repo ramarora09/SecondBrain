@@ -12,7 +12,10 @@ import {
   YAxis,
 } from "recharts";
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api").trim();
+const apiBaseUrl = (
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://secondbrain-w70q.onrender.com/api"
+).trim();
 
 const api = axios.create({
   baseURL: apiBaseUrl,
