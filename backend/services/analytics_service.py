@@ -4,12 +4,24 @@ from __future__ import annotations
 
 import importlib.util
 import os
+from pathlib import Path
 from shutil import which
 
 from services.embeddings import get_embedding_backend
 from services.memory_store import get_question_count, get_topic_counts
 from services.study_service import get_due_flashcards
 from services.vector_store import get_document_count, get_documents
+
+
+def _command_available(explicit_path: str | None, command_name: str) -> bool:
+    """Check whether a native OCR/PDF helper is actually runnable."""
+    if explicit_path:
+        try:
+            if Path(explicit_path).exists():
+                return True
+        except OSError:
+            return False
+    return which(command_name) is not None
 
 
 def get_system_status() -> dict:
@@ -26,7 +38,8 @@ def get_system_status() -> dict:
     config = {
         "groq_api_key_configured": bool(os.getenv("GROQ_API_KEY")),
         "tesseract_cmd_configured": bool(os.getenv("TESSERACT_CMD")),
-        "poppler_available": bool(which("pdfinfo") or os.getenv("POPPLER_PATH")),
+        "tesseract_available": _command_available(os.getenv("TESSERACT_CMD"), "tesseract"),
+        "poppler_available": _command_available(os.getenv("POPPLER_PATH"), "pdfinfo"),
     }
 
     embedding_backend = get_embedding_backend()
@@ -54,8 +67,8 @@ def get_system_status() -> dict:
         warnings.append("Scanned PDF OCR needs pdf2image installed.")
     if dependencies["pdf2image"] and not config["poppler_available"]:
         warnings.append("Scanned PDF OCR still needs Poppler installed and pdfinfo available on PATH.")
-    if dependencies["pytesseract"] and not config["tesseract_cmd_configured"]:
-        warnings.append("Set TESSERACT_CMD if Tesseract is not already available on PATH.")
+    if dependencies["pytesseract"] and not config["tesseract_available"]:
+        warnings.append("Image OCR needs a working Tesseract binary on the deployment host.")
 
     llm_ready = dependencies["groq"] and config["groq_api_key_configured"]
     ingestion_ready = dependencies["pypdf"] and dependencies["youtube_transcript_api"]

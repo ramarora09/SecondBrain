@@ -30,3 +30,11 @@ npm run dev
 
 - Frontend: Vercel
 - Backend: Render or Railway
+
+### Render Notes
+
+- Set `VITE_API_BASE_URL` on Vercel to your Render backend URL ending in `/api`
+- For image OCR and scanned PDF OCR on Render, the host also needs native binaries:
+  - `tesseract`
+  - `pdfinfo` / Poppler
+- If those binaries are missing, text PDFs may still work, but image uploads and scanned PDFs will fail
