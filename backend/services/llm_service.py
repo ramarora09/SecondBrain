@@ -104,9 +104,10 @@ def _structure_instruction(question: str, language: str) -> str:
                 "Direct Answer:\n"
                 "Formula / Concept:\n"
                 "Step-by-Step Solution:\n"
+                "Mini Diagram:\n"
                 "Final Result:\n"
                 "Short Intuition:\n"
-                "Har step alag line me rakho. Calculation skip mat karo."
+                "Har step alag line me rakho. Mini Diagram me arrow flow use karo jaise A -> B -> C. Calculation skip mat karo."
             )
         return (
             "Answer ko structured format me do:\n"
@@ -114,8 +115,9 @@ def _structure_instruction(question: str, language: str) -> str:
             "Main Explanation:\n"
             "Key Points:\n"
             "Example:\n"
+            "Mini Diagram:\n"
             "Short Summary:\n"
-            "Complex text ko short sections me tod do."
+            "Complex text ko short sections me tod do. Mini Diagram me 1-3 short lines ya arrow flow use karo."
         )
 
     if is_calculation:
@@ -124,9 +126,10 @@ def _structure_instruction(question: str, language: str) -> str:
             "Direct Answer:\n"
             "Formula / Concept:\n"
             "Step-by-Step Solution:\n"
+            "Mini Diagram:\n"
             "Final Result:\n"
             "Short Intuition:\n"
-            "Show each important calculation step clearly."
+            "Show each important calculation step clearly. Use the Mini Diagram section for a short arrow flow such as Input -> Process -> Output."
         )
 
     return (
@@ -135,15 +138,75 @@ def _structure_instruction(question: str, language: str) -> str:
         "Main Explanation:\n"
         "Key Points:\n"
         "Example:\n"
+        "Mini Diagram:\n"
         "Short Summary:\n"
-        "Keep each section concise and readable."
+        "Keep each section concise and readable. In Mini Diagram, show a compact text diagram with arrows or 2-4 labeled steps."
     )
 
 
 def _build_local_answer(question: str, context_sections: list[str], language: str) -> str:
     """Create a useful fallback answer without an LLM."""
-    snippets = [section.split("Content:", 1)[-1].strip() for section in context_sections[:3] if section.strip()]
-    summary = "\n".join(f"- {snippet[:220]}" for snippet in snippets if snippet)
+    def is_readable_snippet(text: str) -> bool:
+        cleaned = " ".join(text.split()).strip()
+        if len(cleaned) < 20:
+            return False
+        words = cleaned.split()
+        if len(words) < 5:
+            return False
+        letters = sum(1 for char in cleaned if char.isalpha())
+        allowed = sum(1 for char in cleaned if char.isalnum() or char in " .,:%-()")
+        alphabetic_words = sum(1 for word in words if sum(1 for char in word if char.isalpha()) >= max(2, len(word) // 2))
+        uppercase_words = sum(1 for word in words if word.isupper() and len(word) > 2)
+        average_word_length = sum(len(word.strip(".,:%-()")) for word in words) / max(len(words), 1)
+        symbol_heavy_words = sum(1 for word in words if sum(1 for char in word if not char.isalnum()) > 2)
+        return (
+            letters >= 18
+            and (allowed / max(len(cleaned), 1)) >= 0.9
+            and alphabetic_words >= max(4, len(words) // 2)
+            and uppercase_words <= 1
+            and 3.0 <= average_word_length <= 9.5
+            and symbol_heavy_words <= 1
+        )
+
+    snippets = [
+        section.split("Content:", 1)[-1].strip()
+        for section in context_sections[:4]
+        if section.strip()
+    ]
+    readable_snippets = [snippet for snippet in snippets if is_readable_snippet(snippet)]
+
+    quality_sensitive_question = any(
+        phrase in (question or "").lower()
+        for phrase in ["summarize", "revision", "diagram", "explain", "notes"]
+    )
+
+    if not readable_snippets or (quality_sensitive_question and len(readable_snippets) < 2):
+        if language.lower() == "hinglish":
+            return (
+                "Direct Answer:\n"
+                "Source text quality weak lag rahi hai, isliye reliable explanation nikalna mushkil hai.\n\n"
+                "Key Points:\n"
+                "- Uploaded source me OCR ya extracted text noisy hai\n"
+                "- Better digital PDF ya clearer scan se answer quality improve hogi\n\n"
+                "Mini Diagram:\n"
+                "Uploaded file -> Weak text extraction -> Weak explanation quality\n\n"
+                "Short Summary:\n"
+                "Clear source upload karo, phir main isko proper notes aur diagrams me tod dunga."
+            )
+
+        return (
+            "Direct Answer:\n"
+            "The source text quality is too noisy for a reliable grounded explanation.\n\n"
+            "Key Points:\n"
+            "- The uploaded source contains weak OCR or messy extracted text\n"
+            "- A clearer digital PDF or better scan will improve the answer quality\n\n"
+            "Mini Diagram:\n"
+            "Uploaded file -> Weak text extraction -> Weak explanation quality\n\n"
+            "Short Summary:\n"
+            "Upload a cleaner source and I can turn it into proper notes, explanations, and diagrams."
+        )
+
+    summary = "\n".join(f"- {snippet[:220]}" for snippet in readable_snippets[:3])
 
     if language.lower() == "hinglish":
         return (
@@ -153,6 +216,8 @@ def _build_local_answer(question: str, context_sections: list[str], language: st
             f"{summary}\n\n"
             "Question Focus:\n"
             f"{question}\n\n"
+            "Mini Diagram:\n"
+            "Question -> Retrieved context -> Key idea\n\n"
             "Short Summary:\n"
             "Agar chaho to main isi topic ko aur simple steps me bhi tod sakta hoon."
         )
@@ -164,6 +229,8 @@ def _build_local_answer(question: str, context_sections: list[str], language: st
         f"{summary}\n\n"
         "Question Focus:\n"
         f"{question}\n\n"
+        "Mini Diagram:\n"
+        "Question -> Retrieved context -> Key idea\n\n"
         "Short Summary:\n"
         "Ask a narrower follow-up if you want a cleaner step-by-step explanation."
     )
@@ -208,6 +275,7 @@ Teaching style:
 - Use real-world examples
 - Break complex topics into simple parts
 - Keep answers engaging and natural
+- Add a compact text-only diagram when it improves understanding
 """
 
     prompt = f"""

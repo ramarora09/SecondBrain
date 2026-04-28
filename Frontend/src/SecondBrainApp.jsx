@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import axios from "axios";
 import {
   Bar,
@@ -39,6 +39,13 @@ const quickActions = [
   { label: "Next", buildPrompt: () => "next" },
 ];
 
+const starterPrompts = [
+  "Explain this topic with a mini diagram.",
+  "Summarize this chapter and show the flow.",
+  "Compare two ideas with a simple visual map.",
+  "Teach this step by step with an example.",
+];
+
 function TopicPill({ topic }) {
   return <span className="topic-pill">{topic || "General"}</span>;
 }
@@ -52,6 +59,44 @@ function normalizeAssistantText(text) {
   return cleaned || "I am here, but I could not form a complete answer yet. Try asking in a more specific way.";
 }
 
+function parseDiagramLines(lines) {
+  return lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^[-*]\s*/, ""));
+}
+
+function DiagramBlock({ lines }) {
+  const cleanedLines = parseDiagramLines(lines);
+
+  return (
+    <div className="diagram-block">
+      {cleanedLines.map((line, index) => {
+        const flowParts = line.split("->").map((part) => part.trim()).filter(Boolean);
+
+        if (flowParts.length > 1) {
+          return (
+            <div className="diagram-flow" key={`${line}-${index}`}>
+              {flowParts.map((part, partIndex) => (
+                <div className="diagram-flow-part" key={`${part}-${partIndex}`}>
+                  <span className="diagram-node">{part}</span>
+                  {partIndex < flowParts.length - 1 && <span className="diagram-arrow">â†’</span>}
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        return (
+          <div className="diagram-line" key={`${line}-${index}`}>
+            <span className="diagram-node">{line}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MessageBody({ text }) {
   const normalizedText = normalizeAssistantText(text);
   const blocks = normalizedText.split(/\n\s*\n/).filter(Boolean);
@@ -63,6 +108,7 @@ function MessageBody({ text }) {
     "short summary",
     "formula / concept",
     "step-by-step solution",
+    "mini diagram",
     "final result",
     "short intuition",
     "question focus",
@@ -86,6 +132,10 @@ function MessageBody({ text }) {
 
         if (lines.length === 1 && sectionLabels.has(lines[0].replace(/:$/, "").toLowerCase())) {
           return <h4 className="message-section-title" key={`${block.slice(0, 20)}-${index}`}>{lines[0]}</h4>;
+        }
+
+        if (lines.length > 1 && lines[0].replace(/:$/, "").toLowerCase() === "mini diagram") {
+          return <DiagramBlock key={`${block.slice(0, 20)}-${index}`} lines={lines.slice(1)} />;
         }
 
         return <p key={`${block.slice(0, 20)}-${index}`}>{block}</p>;
@@ -594,7 +644,7 @@ export default function SecondBrainApp() {
                 <div className="document-item" key={`${document.id}-${document.title}`}>
                   <div>
                     <p className="document-title">{document.title}</p>
-                    <p className="document-meta">{document.source_type} • {document.topic}</p>
+                    <p className="document-meta">{document.source_type} | {document.topic}</p>
                   </div>
                 </div>
               ))}
@@ -643,6 +693,18 @@ export default function SecondBrainApp() {
                   <p className="empty-copy">
                     Upload a PDF or YouTube transcript, then ask for summaries, explanations, or revision help.
                   </p>
+                  <div className="starter-grid">
+                    {starterPrompts.map((prompt) => (
+                      <button
+                        className="starter-card"
+                        key={prompt}
+                        onClick={() => setInput(prompt)}
+                        type="button"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -762,3 +824,4 @@ export default function SecondBrainApp() {
     </div>
   );
 }
+

@@ -114,11 +114,12 @@ def start_topic(
     topics: list[str],
     document_id: int | None = None,
     document_title: str | None = None,
+    start_index: int = 0,
 ) -> None:
     """Start structured learning for a specific document context."""
     topic_flow[user_id] = {
         "topics": topics,
-        "index": 0,
+        "index": max(0, min(start_index, len(topics))),
         "document_id": document_id,
         "document_title": document_title,
     }

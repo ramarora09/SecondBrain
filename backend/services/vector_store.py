@@ -188,6 +188,21 @@ def get_document_by_id(document_id: int) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def get_document_content(document_id: int) -> dict[str, Any] | None:
+    """Return a specific uploaded document including stored content."""
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, source_type, title, source_ref, topic, content, created_at
+            FROM documents
+            WHERE id = ?
+            LIMIT 1
+            """,
+            (document_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def get_document_count() -> int:
     """Return the number of uploaded documents."""
     with get_connection() as connection:
@@ -212,6 +227,24 @@ def get_chunk_samples(limit: int = 50, topic: str | None = None) -> list[dict[st
 
     with get_connection() as connection:
         rows = connection.execute(sql, params).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def get_document_chunks(document_id: int, limit: int = 40) -> list[dict[str, Any]]:
+    """Return stored chunks for a specific document."""
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT chunks.id, chunks.chunk_text, chunks.topic, documents.title, documents.source_type
+            FROM chunks
+            JOIN documents ON documents.id = chunks.document_id
+            WHERE documents.id = ?
+            ORDER BY chunks.chunk_index ASC
+            LIMIT ?
+            """,
+            (document_id, limit),
+        ).fetchall()
 
     return [dict(row) for row in rows]
 
