@@ -16,6 +16,13 @@ from services.vector_store import (
     search_chunks,
 )
 
+STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
+    "i", "in", "is", "it", "me", "my", "of", "on", "or", "that", "the",
+    "this", "to", "was", "what", "when", "where", "which", "who", "why",
+    "with", "you", "your", "explain", "tell", "give", "define",
+}
+
 
 def _format_context(results: list[dict]) -> list[str]:
     """Convert retrieval results into compact prompt sections."""
@@ -41,12 +48,65 @@ def _format_context(results: list[dict]) -> list[str]:
     return sections
 
 
-def _select_relevant_results(results: list[dict], limit: int = 6) -> list[dict]:
+def _keywords(text: str) -> set[str]:
+    """Extract meaningful query/document words for a simple relevance guard."""
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_+#-]{2,}", text.lower())
+    return {word.strip("-_") for word in words if word not in STOPWORDS}
+
+
+def _lexical_overlap(question: str, chunk_text: str) -> float:
+    """Return how much a chunk literally overlaps with the user's question."""
+    question_terms = _keywords(question)
+    if not question_terms:
+        return 0.0
+
+    chunk_terms = _keywords(chunk_text)
+    if not chunk_terms:
+        return 0.0
+
+    return len(question_terms & chunk_terms) / len(question_terms)
+
+
+def _rerank_with_lexical_signal(question: str, results: list[dict]) -> list[dict]:
+    """Combine vector similarity with keyword overlap to avoid random off-topic chunks."""
+    reranked: list[dict] = []
+    for item in results:
+        lexical_score = _lexical_overlap(question, item.get("text", ""))
+        combined_score = (float(item.get("score", 0.0)) * 0.65) + (lexical_score * 0.35)
+        reranked.append({**item, "lexical_score": lexical_score, "combined_score": combined_score})
+
+    reranked.sort(key=lambda item: item["combined_score"], reverse=True)
+    return reranked
+
+
+def _select_relevant_results(
+    results: list[dict],
+    *,
+    question: str,
+    limit: int = 6,
+    require_source_match: bool = False,
+) -> list[dict]:
     """Keep only the strongest retrieval matches for prompting."""
     if not results:
         return []
 
-    filtered = [item for item in results if item.get("score", 0.0) >= 0.12]
+    generic_source_request = any(
+        phrase in question.lower()
+        for phrase in ["summarize", "summary", "revise", "revision", "start", "teach", "from pdf", "from the pdf"]
+    )
+    if require_source_match and not generic_source_request:
+        filtered = [
+            item
+            for item in results
+            if item.get("lexical_score", 0.0) >= 0.18 or item.get("score", 0.0) >= 0.42
+        ]
+        return filtered[:limit]
+
+    filtered = [
+        item
+        for item in results
+        if item.get("score", 0.0) >= 0.12 or item.get("lexical_score", 0.0) >= 0.18
+    ]
     if not filtered:
         filtered = results[:2]
 
@@ -316,6 +376,43 @@ def _fallback_answer(language: str) -> str:
     return "I could not find relevant context yet. Upload a PDF, image, or YouTube source, or ask a more specific question."
 
 
+def _outside_uploaded_source_answer(question: str, document_title: str | None, language: str) -> str:
+    """Tell the user clearly when their question is outside the active upload."""
+    title = document_title or "the active uploaded source"
+    if language.lower() == "hinglish":
+        return (
+            "Direct Answer:\n"
+            f"Is question ka clear answer mujhe {title} ke indexed text me nahi mila.\n\n"
+            "Main Explanation:\n"
+            "Main abhi uploaded notes se grounded answer dene ki koshish kar raha hoon, random general chatbot answer nahi. "
+            "Agar aap general answer chahte ho, prompt me likho: `answer generally`.\n\n"
+            "Key Points:\n"
+            f"- Active source: {title}\n"
+            f"- Question: {question}\n"
+            "- Matching source chunk strong nahi mila\n\n"
+            "Mini Diagram:\n"
+            "Question -> Search uploaded notes -> No strong match -> Ask source-related question or enable general answer\n\n"
+            "Short Summary:\n"
+            "PDF se related question poochho, ya general mode explicitly mention karo."
+        )
+
+    return (
+        "Direct Answer:\n"
+        f"I could not find a reliable answer to this question inside {title}.\n\n"
+        "Main Explanation:\n"
+        "I am prioritizing your uploaded notes instead of behaving like a generic chatbot. "
+        "If you want a general answer, ask with: `answer generally`.\n\n"
+        "Key Points:\n"
+        f"- Active source: {title}\n"
+        f"- Question: {question}\n"
+        "- No strongly matching source chunk was found\n\n"
+        "Mini Diagram:\n"
+        "Question -> Search uploaded notes -> No strong match -> Ask source-related question or request general answer\n\n"
+        "Short Summary:\n"
+        "Ask something related to the uploaded PDF, or explicitly request a general explanation."
+    )
+
+
 def _clarify_brief_prompt(question: str, language: str, document_title: str | None = None) -> str | None:
     normalized = " ".join(question.lower().split())
     if normalized not in {"send", "send me", "tell me", "give", "give me"}:
@@ -529,11 +626,31 @@ def query_knowledge_base(
         limit=10,
     )
     reranked = sorted(retrieved, key=lambda item: item["score"], reverse=True)
-    selected_results = _select_relevant_results(reranked, limit=6)
+    reranked = _rerank_with_lexical_signal(question, reranked)
+    selected_results = _select_relevant_results(
+        reranked,
+        question=question,
+        limit=6,
+        require_source_match=active_document is not None,
+    )
     context_sections = _format_context(selected_results)
     memory_lines = _memory_context_lines(limit=3, user_id=user_id)
 
-    if not context_sections and memory_lines:
+    if active_document is not None and not selected_results and intent == "qa":
+        answer = _outside_uploaded_source_answer(question, active_document.get("title"), language)
+        add_to_memory(question, answer, classified_topic, user_id=user_id)
+        return {
+            "question": question,
+            "answer": answer,
+            "topic": "outside_source",
+            "language": language,
+            "sources": [],
+            "has_context": False,
+            "document_id": document_id,
+            "document_title": active_document.get("title"),
+        }
+
+    if not context_sections and memory_lines and active_document is None:
         if language.lower() == "hinglish":
             context_sections = [
                 "Source: Recent chat memory\n"
