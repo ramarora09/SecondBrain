@@ -41,6 +41,7 @@ const api = axios.create({
 const sidebarSections = [
   { id: "dashboard", label: "Dashboard" },
   { id: "chat", label: "Chat" },
+  { id: "notes", label: "Notes" },
   { id: "upload", label: "Upload" },
   { id: "study", label: "Study" },
   { id: "graph", label: "Graph" },
@@ -48,6 +49,7 @@ const sidebarSections = [
 
 const railSections = [
   { id: "chat", label: "Chat", short: "C" },
+  { id: "notes", label: "Notes", short: "N" },
   { id: "upload", label: "Upload", short: "U" },
   { id: "dashboard", label: "Analytics", short: "A" },
   { id: "study", label: "Study", short: "S" },
@@ -206,8 +208,12 @@ export default function SecondBrainApp() {
   const [statusMessage, setStatusMessage] = useState("");
   const [language, setLanguage] = useState("english");
   const [theme, setTheme] = useState("dark");
+  const [strictMode, setStrictMode] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("Ready");
   const [currentDocument, setCurrentDocument] = useState(null);
+  const [notes, setNotes] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+  const [activity, setActivity] = useState([]);
 
   const topicData = Object.entries(analytics.topics || {}).map(([topic, count]) => ({
     topic,
@@ -295,15 +301,21 @@ export default function SecondBrainApp() {
 
   const loadSidebarData = async () => {
     try {
-      const [analyticsRes, dueFlashcardsRes, graphRes] = await Promise.all([
+      const [analyticsRes, dueFlashcardsRes, graphRes, recommendationsRes, notesRes, activityRes] = await Promise.all([
         api.get("/analytics"),
         api.get("/study/flashcards/due"),
         api.get("/graph"),
+        api.get("/recommendations"),
+        api.get("/notes"),
+        api.get("/activity"),
       ]);
 
       setAnalytics(unwrapPayload(analyticsRes.data));
       setFlashcards(unwrapPayload(dueFlashcardsRes.data).flashcards || dueFlashcardsRes.data.flashcards || []);
       setGraph(unwrapPayload(graphRes.data) || { nodes: [], edges: [] });
+      setRecommendations(unwrapPayload(recommendationsRes.data).recommendations || []);
+      setNotes(unwrapPayload(notesRes.data).notes || []);
+      setActivity(unwrapPayload(activityRes.data).events || []);
       const latestDocument = unwrapPayload(analyticsRes.data)?.recent_documents?.[0];
       if (latestDocument) {
         setCurrentDocument({ id: latestDocument.id, title: latestDocument.title });
@@ -355,6 +367,7 @@ export default function SecondBrainApp() {
         language,
         document_id: currentDocument?.id ?? null,
         user_id: sessionId,
+        strict: strictMode,
       });
       const answerPayload = unwrapPayload(response.data);
       const safeAnswer = normalizeAssistantText(answerPayload.answer);
@@ -412,6 +425,34 @@ export default function SecondBrainApp() {
     } catch (error) {
       setStatusMessage(error.response?.data?.detail || "Unable to clear chat history.");
     }
+  };
+
+  const saveComposerAsNote = async () => {
+    const body = input.trim();
+    if (!body) return;
+
+    const title = body.split("\n")[0].slice(0, 90) || "Untitled note";
+    try {
+      const response = await api.post("/notes", {
+        title,
+        body,
+        topic: currentDocument?.title || "General",
+        tags: currentDocument ? ["Source note"] : ["Quick note"],
+        user_id: sessionId,
+      });
+      const note = unwrapPayload(response.data);
+      setNotes((prev) => [note, ...prev]);
+      setInput("");
+      setStatusMessage("Saved note to your knowledge workspace.");
+      await loadSidebarData();
+    } catch (error) {
+      setStatusMessage(error.response?.data?.detail || "Could not save note.");
+    }
+  };
+
+  const runRecommendation = (recommendation) => {
+    if (!recommendation?.action_prompt) return;
+    askQuestion(recommendation.action_prompt);
   };
 
   const uploadPdf = async () => {
@@ -604,6 +645,14 @@ export default function SecondBrainApp() {
                 Hinglish
               </button>
             </div>
+            <div className="toggle-row mode-toggle-row">
+              <button
+                className={`toggle-chip ${strictMode ? "active" : ""}`}
+                onClick={() => setStrictMode((prev) => !prev)}
+              >
+                Strict sources {strictMode ? "On" : "Off"}
+              </button>
+            </div>
           </div>
 
           <div className={`section-block section-block-tight status-panel ${systemStatus.ready ? "status-ok" : "status-warning"}`}>
@@ -648,6 +697,58 @@ export default function SecondBrainApp() {
                 </p>
               </div>
             ))}
+          </div>
+
+          <div className="section-block" id="notes">
+            <div className="section-head">
+              <h2>Notes</h2>
+              <button className="ghost-button" onClick={saveComposerAsNote} disabled={!input.trim()}>
+                Save
+              </button>
+            </div>
+            <p className="section-copy">
+              Capture durable ideas from chat, uploads, or your own thoughts.
+            </p>
+            <div className="document-list">
+              {notes.length === 0 && (
+                <EmptyHint
+                  title="No notes yet"
+                  text="Write an idea in the composer and save it as a structured note."
+                />
+              )}
+              {notes.slice(0, 5).map((note) => (
+                <button
+                  className="note-item"
+                  key={note.id}
+                  onClick={() => askQuestion(`Connect this note to my knowledge base:\n${note.title}\n${note.body}`)}
+                  type="button"
+                >
+                  <span>{note.title}</span>
+                  <small>{note.topic} | {(note.tags || []).join(", ") || "General"}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="section-block">
+            <div className="section-head">
+              <h2>Next Actions</h2>
+              <span>{recommendations.length}</span>
+            </div>
+            <div className="mission-list">
+              {recommendations.slice(0, 3).map((recommendation) => (
+                <button
+                  className="mission-card"
+                  key={recommendation.id || recommendation.title}
+                  onClick={() => runRecommendation(recommendation)}
+                  type="button"
+                >
+                  <span>{recommendation.title}</span>
+                  <small>{recommendation.reason}</small>
+                  <strong>Run</strong>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="section-block" id="upload">
@@ -784,6 +885,24 @@ export default function SecondBrainApp() {
                     <p className="document-title">{document.title}</p>
                     <p className="document-meta">{document.source_type} | {document.topic}</p>
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="section-block">
+            <div className="section-head">
+              <h2>Activity</h2>
+              <span>{activity.length}</span>
+            </div>
+            <div className="activity-list">
+              {activity.length === 0 && (
+                <p className="section-copy">Memory saves, uploads, notes, and study actions will appear here.</p>
+              )}
+              {activity.slice(0, 6).map((event) => (
+                <div className="activity-item" key={event.id}>
+                  <span>{event.event_type.replaceAll("_", " ")}</span>
+                  <small>{event.metadata?.title || event.metadata?.topic || event.entity_type}</small>
                 </div>
               ))}
             </div>

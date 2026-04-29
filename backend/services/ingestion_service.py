@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from services.embeddings import create_embeddings
+from services.activity_service import record_activity
 from services.graph_service import upsert_graph_from_text
 from services.ocr_service import extract_text_from_image
 from services.pdf_processor import extract_text
@@ -76,6 +77,13 @@ def ingest_pdf(file_bytes: bytes, filename: str, user_id: str = "anonymous") -> 
     )
 
     upsert_graph_from_text(text[:5000], user_id=user_id)
+    record_activity(
+        user_id=user_id,
+        event_type="document_indexed",
+        entity_type="document",
+        entity_id=document_id,
+        metadata={"source_type": "pdf", "title": filename, "topic": topic, "chunks": len(chunks)},
+    )
 
     return {
         "document_id": document_id,
@@ -107,6 +115,13 @@ def ingest_youtube(url: str, user_id: str = "anonymous") -> dict:
     )
 
     upsert_graph_from_text(text[:5000], user_id=user_id)
+    record_activity(
+        user_id=user_id,
+        event_type="document_indexed",
+        entity_type="document",
+        entity_id=document_id,
+        metadata={"source_type": "youtube", "title": url, "topic": topic, "chunks": len(chunks)},
+    )
 
     return {
         "document_id": document_id,
@@ -142,6 +157,13 @@ def ingest_image(file_bytes: bytes, filename: str, user_id: str = "anonymous") -
     )
 
     upsert_graph_from_text(text[:5000], user_id=user_id)
+    record_activity(
+        user_id=user_id,
+        event_type="document_indexed",
+        entity_type="document",
+        entity_id=document_id,
+        metadata={"source_type": "image", "title": filename, "topic": topic, "chunks": len(chunks)},
+    )
 
     return {
         "document_id": document_id,

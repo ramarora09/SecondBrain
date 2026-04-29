@@ -6,7 +6,17 @@ import re
 
 from services.embeddings import embed_query
 from services.llm_service import answer_question, complete_text
-from services.memory_store import add_to_memory, get_memory, get_next_topic, start_topic
+from services.activity_service import record_activity
+from services.memory_store import (
+    add_memory_item,
+    add_to_memory,
+    get_memories_from_yesterday,
+    get_memory,
+    get_next_topic,
+    search_memories,
+    start_topic,
+    wants_to_remember,
+)
 from services.topic_classifier import detect_topic
 from services.vector_store import (
     get_document_by_id,
@@ -364,7 +374,30 @@ Return only a numbered list.
 
 
 def _memory_context_lines(limit: int = 3, user_id: str = "anonymous") -> list[str]:
-    return [f"Q: {item['question']}\nA: {item['answer']}" for item in get_memory(limit=limit, user_id=user_id)]
+    recent_chat = [f"Q: {item['question']}\nA: {item['answer']}" for item in get_memory(limit=limit, user_id=user_id)]
+    return recent_chat
+
+
+def _durable_memory_lines(question: str, limit: int = 4, user_id: str = "anonymous") -> list[str]:
+    memories = search_memories(question, limit=limit, user_id=user_id)
+    return [
+        f"Saved memory ({', '.join(item.get('tags') or ['General'])}, score {item['score']}): {item['content']}"
+        for item in memories
+    ]
+
+
+def _answer_yesterday_memories(language: str, user_id: str) -> str:
+    memories = get_memories_from_yesterday(user_id=user_id)
+    if not memories:
+        return (
+            "Kal ke liye koi saved long-term memory nahi mili. Chat history ho sakti hai, par explicit `remember this` memory nahi bani."
+            if language.lower() == "hinglish"
+            else "I do not have any saved long-term memories from yesterday. You may have chat history, but nothing was explicitly saved with `remember this`."
+        )
+
+    lines = [f"- {memory['content']}" for memory in memories]
+    heading = "Kal aapne yeh save kiya:" if language.lower() == "hinglish" else "Yesterday you saved:"
+    return f"{heading}\n" + "\n".join(lines)
 
 
 def _fallback_answer(language: str) -> str:
@@ -490,6 +523,7 @@ def query_knowledge_base(
     language: str = "english",
     document_id: int | None = None,
     user_id: str = "anonymous",
+    strict: bool = False,
 ) -> dict:
     """Answer a question using retrieved knowledge, memory, and learning flow."""
     question = question.strip()
@@ -498,6 +532,48 @@ def query_knowledge_base(
 
     intent = detect_intent(question)
     active_document = get_document_by_id(document_id, user_id=user_id) if document_id is not None else None
+
+    if wants_to_remember(question):
+        saved_memory = add_memory_item(question, user_id=user_id)
+        record_activity(
+            user_id=user_id,
+            event_type="memory_saved",
+            entity_type="memory",
+            entity_id=saved_memory["id"],
+            metadata={"tags": saved_memory["tags"]},
+        )
+        answer = (
+            f"Saved to memory: {saved_memory['content']}"
+            if language.lower() != "hinglish"
+            else f"Memory me save kar diya: {saved_memory['content']}"
+        )
+        return {
+            "question": question,
+            "answer": answer,
+            "topic": "memory",
+            "language": language,
+            "sources": [],
+            "has_context": False,
+            "document_id": document_id,
+            "document_title": active_document.get("title") if active_document else None,
+            "memories": [saved_memory],
+            "actions": [],
+        }
+
+    if "what did i learn yesterday" in question.lower() or "what did i save yesterday" in question.lower():
+        answer = _answer_yesterday_memories(language, user_id)
+        return {
+            "question": question,
+            "answer": answer,
+            "topic": "memory",
+            "language": language,
+            "sources": [],
+            "has_context": False,
+            "document_id": document_id,
+            "document_title": active_document.get("title") if active_document else None,
+            "memories": get_memories_from_yesterday(user_id=user_id),
+            "actions": [],
+        }
 
     if _wants_general_answer(question):
         answer = _general_answer(question, language)
@@ -701,9 +777,31 @@ def query_knowledge_base(
             "has_context": False,
             "document_id": document_id,
             "document_title": active_document.get("title"),
+            "strict": strict,
         }
 
-    if not context_sections and memory_lines and active_document is None:
+    durable_memory_lines = _durable_memory_lines(question, limit=4, user_id=user_id)
+
+    if strict and not context_sections:
+        answer = (
+            "I could not find this in your uploaded knowledge sources, so I will not answer from general knowledge in strict mode."
+            if language.lower() != "hinglish"
+            else "Strict mode me uploaded sources ke andar iska reliable answer nahi mila, isliye main general answer nahi bana raha."
+        )
+        add_to_memory(question, answer, classified_topic, user_id=user_id)
+        return {
+            "question": question,
+            "answer": answer,
+            "topic": "strict_miss",
+            "language": language,
+            "sources": [],
+            "has_context": False,
+            "document_id": document_id,
+            "document_title": active_document.get("title") if active_document else None,
+            "strict": strict,
+        }
+
+    if not context_sections and (memory_lines or durable_memory_lines) and active_document is None:
         if language.lower() == "hinglish":
             context_sections = [
                 "Source: Recent chat memory\n"
@@ -723,6 +821,8 @@ def query_knowledge_base(
                 "Content: Use the recent conversation as the primary reference."
             ]
 
+    memory_lines = durable_memory_lines + memory_lines
+
     if not context_sections and not memory_lines:
         answer = _fallback_answer(language)
         add_to_memory(question, answer, classified_topic, user_id=user_id)
@@ -735,6 +835,7 @@ def query_knowledge_base(
             "has_context": False,
             "document_id": document_id,
             "document_title": active_document.get("title") if active_document else None,
+            "strict": strict,
         }
 
     if intent == "summary":
@@ -760,6 +861,12 @@ def query_knowledge_base(
         )
 
     add_to_memory(question, answer, classified_topic, user_id=user_id)
+    record_activity(
+        user_id=user_id,
+        event_type="question_answered",
+        entity_type="chat",
+        metadata={"topic": classified_topic, "has_context": bool(context_sections), "strict": strict},
+    )
     resolved_title = (
         selected_results[0]["metadata"].get("title")
         if selected_results
@@ -782,4 +889,6 @@ def query_knowledge_base(
         "has_context": bool(context_sections),
         "document_id": document_id,
         "document_title": resolved_title,
+        "strict": strict,
+        "memories": search_memories(question, limit=3, user_id=user_id),
     }

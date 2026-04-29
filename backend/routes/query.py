@@ -32,6 +32,7 @@ def ask_question(payload: AskRequest, x_session_id: str | None = Header(default=
             language=payload.language,
             document_id=payload.document_id,
             user_id=normalize_user_id(payload.user_id or x_session_id),
+            strict=payload.strict,
         )
 
     except ValueError as exc:
@@ -51,6 +52,7 @@ def ask_question_get(
     source: str = "all",
     topic: str | None = None,
     language: str = "english",
+    strict: bool = False,
     x_session_id: str | None = Header(default=None),
 ):
     try:
@@ -60,6 +62,7 @@ def ask_question_get(
             topic=topic,
             language=language,
             user_id=normalize_user_id(x_session_id),
+            strict=strict,
         )
 
     except ValueError as exc:

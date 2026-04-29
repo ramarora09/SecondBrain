@@ -14,6 +14,7 @@ class AskRequest(BaseModel):
     language: str = Field(default="english")
     document_id: int | None = None
     user_id: str | None = None
+    strict: bool = False
 
 
 class YouTubeIngestRequest(BaseModel):
@@ -35,3 +36,22 @@ class FlashcardReviewRequest(BaseModel):
     """Spaced repetition review payload."""
 
     quality: int = Field(..., ge=1, le=5)
+
+
+class NoteCreateRequest(BaseModel):
+    """Create a structured note."""
+
+    title: str = Field(..., min_length=1, max_length=180)
+    body: str = Field(default="")
+    topic: str = Field(default="General")
+    tags: list[str] = Field(default_factory=list)
+    user_id: str | None = None
+
+
+class NoteUpdateRequest(BaseModel):
+    """Update a structured note."""
+
+    title: str | None = Field(default=None, max_length=180)
+    body: str | None = None
+    topic: str | None = None
+    tags: list[str] | None = None

@@ -113,6 +113,77 @@ def initialize_database() -> None:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS memories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
+                memory_type TEXT NOT NULL DEFAULT 'fact',
+                content TEXT NOT NULL,
+                importance REAL NOT NULL DEFAULT 0.6,
+                tags TEXT NOT NULL DEFAULT '[]',
+                embedding TEXT NOT NULL DEFAULT '[]',
+                source_message_id INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(source_message_id) REFERENCES chat_history(id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
+                title TEXT NOT NULL,
+                body TEXT NOT NULL DEFAULT '',
+                topic TEXT NOT NULL DEFAULT 'General',
+                tags TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS note_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
+                source_note_id INTEGER NOT NULL,
+                target_note_id INTEGER NOT NULL,
+                relation_type TEXT NOT NULL DEFAULT 'related',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, source_note_id, target_note_id, relation_type),
+                FOREIGN KEY(source_note_id) REFERENCES notes(id) ON DELETE CASCADE,
+                FOREIGN KEY(target_note_id) REFERENCES notes(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS learning_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
+                topics TEXT NOT NULL,
+                current_index INTEGER NOT NULL DEFAULT 0,
+                document_id INTEGER,
+                document_title TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS activity_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
+                event_type TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS recommendations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
+                title TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                action_prompt TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS flashcards (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL DEFAULT 'anonymous',
@@ -152,6 +223,12 @@ def initialize_database() -> None:
         _ensure_column(cursor, "documents", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
         _ensure_column(cursor, "chunks", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
         _ensure_column(cursor, "chat_history", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "memories", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "notes", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "note_links", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "learning_sessions", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "activity_events", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "recommendations", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
         _ensure_column(cursor, "flashcards", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
         _ensure_column(cursor, "graph_nodes", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
         _ensure_column(cursor, "graph_edges", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")

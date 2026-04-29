@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routes import analytics, graph, image, query, study, summary, upload, youtube
+from routes import analytics, graph, image, memory, notes, query, recommendations, study, summary, upload, youtube
 from services.analytics_service import get_system_status
 from services.database import initialize_database
 
@@ -52,6 +52,9 @@ app.include_router(summary.router, prefix="/api")
 app.include_router(study.router, prefix="/api")
 app.include_router(graph.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
+app.include_router(memory.router, prefix="/api")
+app.include_router(notes.router, prefix="/api")
+app.include_router(recommendations.router, prefix="/api")
 
 
 static_dir = Path(__file__).resolve().parent / "static"
