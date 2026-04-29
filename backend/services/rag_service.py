@@ -444,6 +444,45 @@ def _is_generic_start_prompt(question: str) -> bool:
     }
 
 
+def _wants_general_answer(question: str) -> bool:
+    normalized = question.lower()
+    return any(
+        phrase in normalized
+        for phrase in [
+            "answer generally",
+            "general answer",
+            "outside pdf",
+            "without pdf",
+            "ignore uploaded",
+            "not from pdf",
+        ]
+    )
+
+
+def _general_answer(question: str, language: str) -> str:
+    """Answer outside uploaded sources only when the user explicitly asks."""
+    prompt = f"""
+Answer this as general knowledge, not from uploaded notes.
+
+Question:
+{question}
+
+Use this structure:
+Direct Answer:
+Main Explanation:
+Key Points:
+Example:
+Mini Diagram:
+Short Summary:
+"""
+    try:
+        return complete_text(prompt=prompt, temperature=0.2)
+    except Exception:
+        if language.lower() == "hinglish":
+            return "General answer ke liye AI model abhi available nahi hai. Thoda baad try karo."
+        return "The AI model is not available for a general answer right now. Please try again."
+
+
 def query_knowledge_base(
     question: str,
     source: str = "all",
@@ -459,6 +498,20 @@ def query_knowledge_base(
 
     intent = detect_intent(question)
     active_document = get_document_by_id(document_id, user_id=user_id) if document_id is not None else None
+
+    if _wants_general_answer(question):
+        answer = _general_answer(question, language)
+        add_to_memory(question, answer, "general", user_id=user_id)
+        return {
+            "question": question,
+            "answer": answer,
+            "topic": "general",
+            "language": language,
+            "sources": [],
+            "has_context": False,
+            "document_id": document_id,
+            "document_title": active_document.get("title") if active_document else None,
+        }
 
     clarification = _clarify_brief_prompt(
         question,
