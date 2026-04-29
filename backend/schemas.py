@@ -13,12 +13,14 @@ class AskRequest(BaseModel):
     topic: str | None = None
     language: str = Field(default="english")
     document_id: int | None = None
+    user_id: str | None = None
 
 
 class YouTubeIngestRequest(BaseModel):
     """YouTube ingestion payload."""
 
     url: str = Field(..., min_length=5)
+    user_id: str | None = None
 
 
 class FlashcardGenerateRequest(BaseModel):
@@ -26,6 +28,7 @@ class FlashcardGenerateRequest(BaseModel):
 
     limit: int = Field(default=5, ge=1, le=20)
     topic: str | None = None
+    user_id: str | None = None
 
 
 class FlashcardReviewRequest(BaseModel):

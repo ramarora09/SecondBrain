@@ -87,16 +87,16 @@ def get_system_status() -> dict:
     }
 
 
-def get_analytics_summary() -> dict:
+def get_analytics_summary(user_id: str = "anonymous") -> dict:
     """Return analytics data used by the API and dashboard."""
-    topics = get_topic_counts()
-    documents = get_documents(limit=10)
+    topics = get_topic_counts(user_id=user_id)
+    documents = get_documents(limit=10, user_id=user_id)
 
     return {
-        "total_questions": get_question_count(),
+        "total_questions": get_question_count(user_id=user_id),
         "topics": topics,
-        "documents_uploaded": get_document_count(),
+        "documents_uploaded": get_document_count(user_id=user_id),
         "recent_documents": documents,
-        "due_flashcards": len(get_due_flashcards()),
+        "due_flashcards": len(get_due_flashcards(user_id=user_id)),
         "system_status": get_system_status(),
     }

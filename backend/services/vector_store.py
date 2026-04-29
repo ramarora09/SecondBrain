@@ -11,6 +11,7 @@ from services.database import dumps_json, get_connection, loads_json
 
 def store_document(
     *,
+    user_id: str = "anonymous",
     source_type: str,
     title: str,
     source_ref: str | None,
@@ -28,10 +29,10 @@ def store_document(
         cursor = connection.cursor()
         cursor.execute(
             """
-            INSERT INTO documents (source_type, title, source_ref, topic, content)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO documents (user_id, source_type, title, source_ref, topic, content)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (source_type, title, source_ref, topic, content),
+            (user_id, source_type, title, source_ref, topic, content),
         )
         document_id = cursor.lastrowid
 
@@ -48,6 +49,7 @@ def store_document(
             chunk_rows.append(
                 (
                     document_id,
+                    user_id,
                     chunk_index,
                     chunk_text,
                     dumps_json(embedding),
@@ -58,8 +60,8 @@ def store_document(
 
         cursor.executemany(
             """
-            INSERT INTO chunks (document_id, chunk_index, chunk_text, embedding, topic, metadata)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO chunks (document_id, user_id, chunk_index, chunk_text, embedding, topic, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             chunk_rows,
         )
@@ -75,6 +77,7 @@ def search_chunks(
     source_filter: str = "all",
     topic_filter: str | None = None,
     document_id_filter: int | None = None,
+    user_id: str = "anonymous",
     limit: int = 10,
 ) -> list[dict[str, Any]]:
     """Return the most similar chunks using cosine similarity."""
@@ -91,8 +94,9 @@ def search_chunks(
         FROM chunks
         JOIN documents ON documents.id = chunks.document_id
         WHERE 1 = 1
+        AND documents.user_id = ?
     """
-    params: list[Any] = []
+    params: list[Any] = [user_id]
 
     if source_filter != "all":
         sql += " AND documents.source_type = ?"
@@ -143,83 +147,91 @@ def search_chunks(
     return results[:limit]
 
 
-def get_documents(limit: int = 100) -> list[dict[str, Any]]:
+def get_documents(limit: int = 100, user_id: str = "anonymous") -> list[dict[str, Any]]:
     """Return recent uploaded documents."""
     with get_connection() as connection:
         rows = connection.execute(
             """
             SELECT id, source_type, title, source_ref, topic, created_at
             FROM documents
+            WHERE user_id = ?
             ORDER BY created_at DESC
             LIMIT ?
             """,
-            (limit,),
+            (user_id, limit),
         ).fetchall()
 
     return [dict(row) for row in rows]
 
 
-def get_latest_document() -> dict[str, Any] | None:
+def get_latest_document(user_id: str = "anonymous") -> dict[str, Any] | None:
     """Return the most recently uploaded document."""
     with get_connection() as connection:
         row = connection.execute(
             """
             SELECT id, source_type, title, source_ref, topic, created_at
             FROM documents
+            WHERE user_id = ?
             ORDER BY id DESC
             LIMIT 1
             """
+            ,
+            (user_id,),
         ).fetchone()
     return dict(row) if row else None
 
 
-def get_document_by_id(document_id: int) -> dict[str, Any] | None:
+def get_document_by_id(document_id: int, user_id: str = "anonymous") -> dict[str, Any] | None:
     """Return a specific uploaded document by id."""
     with get_connection() as connection:
         row = connection.execute(
             """
             SELECT id, source_type, title, source_ref, topic, created_at
             FROM documents
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             LIMIT 1
             """,
-            (document_id,),
+            (document_id, user_id),
         ).fetchone()
     return dict(row) if row else None
 
 
-def get_document_content(document_id: int) -> dict[str, Any] | None:
+def get_document_content(document_id: int, user_id: str = "anonymous") -> dict[str, Any] | None:
     """Return a specific uploaded document including stored content."""
     with get_connection() as connection:
         row = connection.execute(
             """
             SELECT id, source_type, title, source_ref, topic, content, created_at
             FROM documents
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             LIMIT 1
             """,
-            (document_id,),
+            (document_id, user_id),
         ).fetchone()
     return dict(row) if row else None
 
 
-def get_document_count() -> int:
+def get_document_count(user_id: str = "anonymous") -> int:
     """Return the number of uploaded documents."""
     with get_connection() as connection:
-        row = connection.execute("SELECT COUNT(*) AS count FROM documents").fetchone()
+        row = connection.execute(
+            "SELECT COUNT(*) AS count FROM documents WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
     return int(row["count"]) if row else 0
 
 
-def get_chunk_samples(limit: int = 50, topic: str | None = None) -> list[dict[str, Any]]:
+def get_chunk_samples(limit: int = 50, topic: str | None = None, user_id: str = "anonymous") -> list[dict[str, Any]]:
     """Return stored chunks for summarization and flashcard generation."""
     sql = """
         SELECT chunks.id, chunks.chunk_text, chunks.topic, documents.title, documents.source_type
         FROM chunks
         JOIN documents ON documents.id = chunks.document_id
+        WHERE chunks.user_id = ?
     """
-    params: list[Any] = []
+    params: list[Any] = [user_id]
     if topic:
-        sql += " WHERE chunks.topic = ?"
+        sql += " AND chunks.topic = ?"
         params.append(topic)
 
     sql += " ORDER BY chunks.created_at DESC LIMIT ?"
@@ -231,7 +243,7 @@ def get_chunk_samples(limit: int = 50, topic: str | None = None) -> list[dict[st
     return [dict(row) for row in rows]
 
 
-def get_document_chunks(document_id: int, limit: int = 40) -> list[dict[str, Any]]:
+def get_document_chunks(document_id: int, limit: int = 40, user_id: str = "anonymous") -> list[dict[str, Any]]:
     """Return stored chunks for a specific document."""
     with get_connection() as connection:
         rows = connection.execute(
@@ -239,11 +251,11 @@ def get_document_chunks(document_id: int, limit: int = 40) -> list[dict[str, Any
             SELECT chunks.id, chunks.chunk_text, chunks.topic, documents.title, documents.source_type
             FROM chunks
             JOIN documents ON documents.id = chunks.document_id
-            WHERE documents.id = ?
+            WHERE documents.id = ? AND documents.user_id = ?
             ORDER BY chunks.chunk_index ASC
             LIMIT ?
             """,
-            (document_id, limit),
+            (document_id, user_id, limit),
         ).fetchall()
 
     return [dict(row) for row in rows]

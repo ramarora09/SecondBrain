@@ -7,46 +7,48 @@ from services.database import get_connection
 topic_flow = {}
 
 
-def add_to_memory(question: str, answer: str, topic: str) -> None:
+def add_to_memory(question: str, answer: str, topic: str, user_id: str = "anonymous") -> None:
     """Persist a question-answer pair."""
     with get_connection() as connection:
         connection.execute(
             """
-            INSERT INTO chat_history (question, answer, topic)
-            VALUES (?, ?, ?)
+            INSERT INTO chat_history (user_id, question, answer, topic)
+            VALUES (?, ?, ?, ?)
             """,
-            (question, answer, topic),
+            (user_id, question, answer, topic),
         )
         connection.commit()
 
 
-def get_memory(limit: int = 3) -> list[dict]:
+def get_memory(limit: int = 3, user_id: str = "anonymous") -> list[dict]:
     """Return latest Q/A pairs."""
     with get_connection() as connection:
         rows = connection.execute(
             """
             SELECT question, answer, topic, created_at
             FROM chat_history
+            WHERE user_id = ?
             ORDER BY id DESC
             LIMIT ?
             """,
-            (limit,),
+            (user_id, limit),
         ).fetchall()
 
     return [dict(row) for row in reversed(rows)]
 
 
-def get_chat_history(limit: int = 100) -> list[dict]:
+def get_chat_history(limit: int = 100, user_id: str = "anonymous") -> list[dict]:
     """Return chat history formatted for UI."""
     with get_connection() as connection:
         rows = connection.execute(
             """
             SELECT question, answer, topic, created_at
             FROM chat_history
+            WHERE user_id = ?
             ORDER BY id ASC
             LIMIT ?
             """,
-            (limit,),
+            (user_id, limit),
         ).fetchall()
 
     messages: list[dict] = []
@@ -70,38 +72,44 @@ def get_chat_history(limit: int = 100) -> list[dict]:
     return messages
 
 
-def clear_memory() -> None:
+def clear_memory(user_id: str = "anonymous") -> None:
     """Clear stored chat history."""
     with get_connection() as connection:
-        connection.execute("DELETE FROM chat_history")
+        connection.execute("DELETE FROM chat_history WHERE user_id = ?", (user_id,))
         connection.commit()
 
 
-def get_question_count() -> int:
+def get_question_count(user_id: str = "anonymous") -> int:
     """Return total number of stored questions."""
     with get_connection() as connection:
-        row = connection.execute("SELECT COUNT(*) AS count FROM chat_history").fetchone()
+        row = connection.execute(
+            "SELECT COUNT(*) AS count FROM chat_history WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
     return int(row["count"]) if row else 0
 
 
-def get_topic_counts() -> dict[str, int]:
+def get_topic_counts(user_id: str = "anonymous") -> dict[str, int]:
     """Return topic frequencies from chat history."""
     with get_connection() as connection:
         rows = connection.execute(
             """
             SELECT topic, COUNT(*) AS count
             FROM chat_history
+            WHERE user_id = ?
             GROUP BY topic
             ORDER BY count DESC
             """
+            ,
+            (user_id,),
         ).fetchall()
 
     return {row["topic"]: int(row["count"]) for row in rows}
 
 
-def get_weak_topics(limit: int = 3) -> list[str]:
+def get_weak_topics(limit: int = 3, user_id: str = "anonymous") -> list[str]:
     """Detect weak topics (least asked)."""
-    topic_counts = get_topic_counts()
+    topic_counts = get_topic_counts(user_id=user_id)
     if not topic_counts:
         return []
 
@@ -155,10 +163,10 @@ def reset_learning(user_id: str) -> None:
         del topic_flow[user_id]
 
 
-def get_study_summary() -> dict:
+def get_study_summary(user_id: str = "anonymous") -> dict:
     """Return full study analytics."""
     return {
-        "total_questions": get_question_count(),
-        "topics": get_topic_counts(),
-        "weak_topics": get_weak_topics(),
+        "total_questions": get_question_count(user_id=user_id),
+        "topics": get_topic_counts(user_id=user_id),
+        "weak_topics": get_weak_topics(user_id=user_id),
     }

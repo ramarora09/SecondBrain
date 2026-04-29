@@ -214,18 +214,18 @@ def _extract_readable_points(content: str, limit: int = 6) -> list[str]:
     return candidates
 
 
-def _document_text_for_teaching(document_id: int | None) -> tuple[str | None, str | None]:
+def _document_text_for_teaching(document_id: int | None, user_id: str) -> tuple[str | None, str | None]:
     """Resolve the best available document text for topic generation."""
     if document_id is None:
         return None, None
 
-    document = get_document_content(document_id)
+    document = get_document_content(document_id, user_id=user_id)
     if document and document.get("content"):
         content = str(document["content"]).strip()
         if content:
             return document.get("title"), content
 
-    chunks = get_document_chunks(document_id, limit=24)
+    chunks = get_document_chunks(document_id, limit=24, user_id=user_id)
     if not chunks:
         return (document or {}).get("title"), None
 
@@ -303,8 +303,8 @@ Return only a numbered list.
     return ["Introduction to the topic", "Core concepts", "Important examples", "Revision summary"]
 
 
-def _memory_context_lines(limit: int = 3) -> list[str]:
-    return [f"Q: {item['question']}\nA: {item['answer']}" for item in get_memory(limit=limit)]
+def _memory_context_lines(limit: int = 3, user_id: str = "anonymous") -> list[str]:
+    return [f"Q: {item['question']}\nA: {item['answer']}" for item in get_memory(limit=limit, user_id=user_id)]
 
 
 def _fallback_answer(language: str) -> str:
@@ -353,6 +353,7 @@ def query_knowledge_base(
     topic: str | None = None,
     language: str = "english",
     document_id: int | None = None,
+    user_id: str = "anonymous",
 ) -> dict:
     """Answer a question using retrieved knowledge, memory, and learning flow."""
     question = question.strip()
@@ -360,7 +361,7 @@ def query_knowledge_base(
         raise ValueError("Question cannot be empty")
 
     intent = detect_intent(question)
-    active_document = get_document_by_id(document_id) if document_id is not None else None
+    active_document = get_document_by_id(document_id, user_id=user_id) if document_id is not None else None
 
     clarification = _clarify_brief_prompt(
         question,
@@ -380,11 +381,11 @@ def query_knowledge_base(
         }
 
     if intent == "next":
-        next_topic = get_next_topic("user1")
+        next_topic = get_next_topic(user_id)
         if next_topic is None and document_id is not None:
-            title, document_text = _document_text_for_teaching(document_id)
+            title, document_text = _document_text_for_teaching(document_id, user_id=user_id)
             if document_text:
-                active_document = get_document_by_id(document_id)
+                active_document = get_document_by_id(document_id, user_id=user_id)
                 readable_points = _extract_readable_points(document_text, limit=5)
                 if not readable_points:
                     readable_points = _fallback_topics_from_topic(
@@ -399,16 +400,16 @@ def query_knowledge_base(
                 if not topics or not _extract_readable_points("\n".join(topics), limit=1):
                     topics = readable_points
                 start_topic(
-                    "user1",
+                    user_id,
                     topics,
                     document_id=document_id,
                     document_title=title,
                     start_index=0,
                 )
-                next_topic = get_next_topic("user1")
+                next_topic = get_next_topic(user_id)
 
         if next_topic is None and document_id is not None:
-            active_document = get_document_by_id(document_id)
+            active_document = get_document_by_id(document_id, user_id=user_id)
             unreadable_answer = _document_quality_message(
                 active_document.get("title") if active_document else None,
                 language,
@@ -436,8 +437,11 @@ def query_knowledge_base(
         }
 
     if intent == "teaching":
-        active_document = active_document if active_document is not None else get_latest_document()
-        title, document_text = _document_text_for_teaching(active_document.get("id") if active_document else None)
+        active_document = active_document if active_document is not None else get_latest_document(user_id=user_id)
+        title, document_text = _document_text_for_teaching(
+            active_document.get("id") if active_document else None,
+            user_id=user_id,
+        )
 
         if active_document is None and any(keyword in question.lower() for keyword in ["pdf", "document", "file", "upload"]):
             answer = (
@@ -491,7 +495,7 @@ def query_knowledge_base(
                     active_document.get("title") if active_document else None,
                 )
         start_topic(
-            "user1",
+            user_id,
             topics,
             document_id=active_document.get("id") if active_document else None,
             document_title=active_document.get("title") if active_document else None,
@@ -521,12 +525,13 @@ def query_knowledge_base(
         source_filter=source,
         topic_filter=topic,
         document_id_filter=document_id,
+        user_id=user_id,
         limit=10,
     )
     reranked = sorted(retrieved, key=lambda item: item["score"], reverse=True)
     selected_results = _select_relevant_results(reranked, limit=6)
     context_sections = _format_context(selected_results)
-    memory_lines = _memory_context_lines(limit=3)
+    memory_lines = _memory_context_lines(limit=3, user_id=user_id)
 
     if not context_sections and memory_lines:
         if language.lower() == "hinglish":
@@ -550,7 +555,7 @@ def query_knowledge_base(
 
     if not context_sections and not memory_lines:
         answer = _fallback_answer(language)
-        add_to_memory(question, answer, classified_topic)
+        add_to_memory(question, answer, classified_topic, user_id=user_id)
         return {
             "question": question,
             "answer": answer,
@@ -584,7 +589,7 @@ def query_knowledge_base(
             language=language,
         )
 
-    add_to_memory(question, answer, classified_topic)
+    add_to_memory(question, answer, classified_topic, user_id=user_id)
     resolved_title = (
         selected_results[0]["metadata"].get("title")
         if selected_results

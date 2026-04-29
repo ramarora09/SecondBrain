@@ -18,9 +18,9 @@ def _initial_review_time() -> str:
     return (_utcnow() + timedelta(days=1)).isoformat()
 
 
-def generate_flashcards(limit: int = 5, topic: str | None = None) -> list[dict]:
+def generate_flashcards(limit: int = 5, topic: str | None = None, user_id: str = "anonymous") -> list[dict]:
     """Generate and persist flashcards from recent chunks."""
-    chunks = get_chunk_samples(limit=max(limit * 3, 10), topic=topic)
+    chunks = get_chunk_samples(limit=max(limit * 3, 10), topic=topic, user_id=user_id)
     if not chunks:
         return []
 
@@ -50,10 +50,11 @@ def generate_flashcards(limit: int = 5, topic: str | None = None) -> list[dict]:
             scheduled_review = _initial_review_time()
             cursor.execute(
                 """
-                INSERT INTO flashcards (chunk_id, topic, question, answer, next_review_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO flashcards (user_id, chunk_id, topic, question, answer, next_review_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    user_id,
                     chunk_ref["id"],
                     card.get("topic") or chunk_ref["topic"],
                     card["question"],
@@ -76,7 +77,7 @@ def generate_flashcards(limit: int = 5, topic: str | None = None) -> list[dict]:
     return persisted
 
 
-def get_due_flashcards(limit: int = 20) -> list[dict]:
+def get_due_flashcards(limit: int = 20, user_id: str = "anonymous") -> list[dict]:
     """Return flashcards due for review."""
     now = _utcnow().isoformat()
     with get_connection() as connection:
@@ -84,22 +85,22 @@ def get_due_flashcards(limit: int = 20) -> list[dict]:
             """
             SELECT id, topic, question, answer, ease_factor, interval_days, review_count, next_review_at
             FROM flashcards
-            WHERE next_review_at IS NULL OR next_review_at <= ?
+            WHERE user_id = ? AND (next_review_at IS NULL OR next_review_at <= ?)
             ORDER BY next_review_at ASC, created_at ASC
             LIMIT ?
             """,
-            (now, limit),
+            (user_id, now, limit),
         ).fetchall()
 
     return [dict(row) for row in rows]
 
 
-def review_flashcard(card_id: int, quality: int) -> dict | None:
+def review_flashcard(card_id: int, quality: int, user_id: str = "anonymous") -> dict | None:
     """Update a flashcard using a simple SM-2 style repetition rule."""
     with get_connection() as connection:
         row = connection.execute(
-            "SELECT * FROM flashcards WHERE id = ?",
-            (card_id,),
+            "SELECT * FROM flashcards WHERE id = ? AND user_id = ?",
+            (card_id, user_id),
         ).fetchone()
 
         if row is None:
@@ -138,12 +139,12 @@ def review_flashcard(card_id: int, quality: int) -> dict | None:
     }
 
 
-def build_study_recommendations(analytics_summary: dict) -> dict:
+def build_study_recommendations(analytics_summary: dict, user_id: str = "anonymous") -> dict:
     """Create actionable study guidance from analytics and flashcard load."""
     topic_counts = analytics_summary.get("topics", {})
     sorted_topics = sorted(topic_counts.items(), key=lambda item: item[1])
     weak_topics = [topic for topic, _ in sorted_topics[:3]] if sorted_topics else []
-    due_count = len(get_due_flashcards())
+    due_count = len(get_due_flashcards(user_id=user_id))
 
     summary = {
         "topics": topic_counts,

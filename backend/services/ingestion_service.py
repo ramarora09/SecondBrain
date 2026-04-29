@@ -46,7 +46,7 @@ def extract_text_with_ocr(file_bytes: bytes) -> str:
     return "\n".join(full_text).strip()
 
 
-def ingest_pdf(file_bytes: bytes, filename: str) -> dict:
+def ingest_pdf(file_bytes: bytes, filename: str, user_id: str = "anonymous") -> dict:
     """Extract, embed, and persist a PDF with OCR fallback."""
     text = extract_text(file_bytes)
 
@@ -65,6 +65,7 @@ def ingest_pdf(file_bytes: bytes, filename: str) -> dict:
     topic = detect_topic(text[:2000])
     document_id = store_document(
         source_type="pdf",
+        user_id=user_id,
         title=filename,
         source_ref=filename,
         topic=topic,
@@ -74,7 +75,7 @@ def ingest_pdf(file_bytes: bytes, filename: str) -> dict:
         metadata={"filename": filename},
     )
 
-    upsert_graph_from_text(text[:5000])
+    upsert_graph_from_text(text[:5000], user_id=user_id)
 
     return {
         "document_id": document_id,
@@ -84,7 +85,7 @@ def ingest_pdf(file_bytes: bytes, filename: str) -> dict:
     }
 
 
-def ingest_youtube(url: str) -> dict:
+def ingest_youtube(url: str, user_id: str = "anonymous") -> dict:
     """Extract, embed, and persist a YouTube transcript."""
     text = extract_transcript(url)
     chunks, embeddings = create_embeddings(text)
@@ -95,6 +96,7 @@ def ingest_youtube(url: str) -> dict:
     topic = detect_topic(text[:2000])
     document_id = store_document(
         source_type="youtube",
+        user_id=user_id,
         title=url,
         source_ref=url,
         topic=topic,
@@ -104,7 +106,7 @@ def ingest_youtube(url: str) -> dict:
         metadata={"url": url},
     )
 
-    upsert_graph_from_text(text[:5000])
+    upsert_graph_from_text(text[:5000], user_id=user_id)
 
     return {
         "document_id": document_id,
@@ -114,7 +116,7 @@ def ingest_youtube(url: str) -> dict:
     }
 
 
-def ingest_image(file_bytes: bytes, filename: str) -> dict:
+def ingest_image(file_bytes: bytes, filename: str, user_id: str = "anonymous") -> dict:
     """Extract, embed, and persist image text."""
     text, warning = extract_text_from_image(file_bytes)
     if warning and not text:
@@ -129,6 +131,7 @@ def ingest_image(file_bytes: bytes, filename: str) -> dict:
     topic = detect_topic(text[:2000])
     document_id = store_document(
         source_type="image",
+        user_id=user_id,
         title=filename,
         source_ref=filename,
         topic=topic,
@@ -138,7 +141,7 @@ def ingest_image(file_bytes: bytes, filename: str) -> dict:
         metadata={"filename": filename},
     )
 
-    upsert_graph_from_text(text[:5000])
+    upsert_graph_from_text(text[:5000], user_id=user_id)
 
     return {
         "document_id": document_id,

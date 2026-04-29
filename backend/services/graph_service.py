@@ -28,7 +28,7 @@ def extract_entities(text: str, limit: int = 8) -> list[str]:
     return [entity for entity, _ in counts.most_common(limit)]
 
 
-def upsert_graph_from_text(text: str) -> None:
+def upsert_graph_from_text(text: str, user_id: str = "anonymous") -> None:
     """Extract entities from text and update the co-occurrence graph."""
     entities = extract_entities(text)
     if len(entities) < 2:
@@ -41,11 +41,11 @@ def upsert_graph_from_text(text: str) -> None:
         for entity in entities:
             cursor.execute(
                 """
-                INSERT INTO graph_nodes (name, node_type, weight)
-                VALUES (?, 'concept', 1)
+                INSERT INTO graph_nodes (user_id, name, node_type, weight)
+                VALUES (?, ?, 'concept', 1)
                 ON CONFLICT(name) DO UPDATE SET weight = weight + 1
                 """,
-                (entity,),
+                (user_id, entity),
             )
             node_id = cursor.execute(
                 "SELECT id FROM graph_nodes WHERE name = ?",
@@ -62,38 +62,40 @@ def upsert_graph_from_text(text: str) -> None:
             low_id, high_id = sorted((source_node_id, target_node_id))
             cursor.execute(
                 """
-                INSERT INTO graph_edges (source_node_id, target_node_id, weight)
-                VALUES (?, ?, 1)
+                INSERT INTO graph_edges (user_id, source_node_id, target_node_id, weight)
+                VALUES (?, ?, ?, 1)
                 ON CONFLICT(source_node_id, target_node_id)
                 DO UPDATE SET weight = weight + 1
                 """,
-                (low_id, high_id),
+                (user_id, low_id, high_id),
             )
 
         connection.commit()
 
 
-def get_graph_payload(limit: int = 100) -> dict:
+def get_graph_payload(limit: int = 100, user_id: str = "anonymous") -> dict:
     """Return graph nodes and edges formatted for the frontend."""
     with get_connection() as connection:
         nodes = connection.execute(
             """
             SELECT id, name, node_type, weight
             FROM graph_nodes
+            WHERE user_id = ?
             ORDER BY weight DESC
             LIMIT ?
             """,
-            (limit,),
+            (user_id, limit),
         ).fetchall()
 
         edges = connection.execute(
             """
             SELECT source_node_id, target_node_id, weight
             FROM graph_edges
+            WHERE user_id = ?
             ORDER BY weight DESC
             LIMIT ?
             """,
-            (limit * 2,),
+            (user_id, limit * 2),
         ).fetchall()
 
     return {

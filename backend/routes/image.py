@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile
 
 from services.ingestion_service import ingest_image
+from services.session import normalize_user_id
 
 router = APIRouter()
 
 
 @router.post("/upload-image")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(file: UploadFile = File(...), x_session_id: str | None = Header(default=None)):
     """Extract text from an uploaded image with OCR fallback messaging."""
     try:
         if not file.content_type or not file.content_type.startswith("image/"):
@@ -18,7 +19,7 @@ async def upload_image(file: UploadFile = File(...)):
         contents = await file.read()
         if not contents:
             raise HTTPException(status_code=400, detail="Uploaded image is empty.")
-        result = ingest_image(contents, file.filename or "uploaded-image")
+        result = ingest_image(contents, file.filename or "uploaded-image", user_id=normalize_user_id(x_session_id))
         return {"message": "Image processed successfully", **result}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

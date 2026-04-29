@@ -17,8 +17,25 @@ const apiBaseUrl = (
   "https://secondbrain-w70q.onrender.com/api"
 ).trim();
 
+function getSessionId() {
+  const key = "second_brain_session_id";
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+
+  const generated =
+    window.crypto?.randomUUID?.() ||
+    `sb-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.localStorage.setItem(key, generated);
+  return generated;
+}
+
+const sessionId = getSessionId();
+
 const api = axios.create({
   baseURL: apiBaseUrl,
+  headers: {
+    "X-Session-Id": sessionId,
+  },
 });
 
 const sidebarSections = [
@@ -279,6 +296,7 @@ export default function SecondBrainApp() {
         source: "all",
         language,
         document_id: currentDocument?.id ?? null,
+        user_id: sessionId,
       });
       const answerPayload = unwrapPayload(response.data);
       const safeAnswer = normalizeAssistantText(answerPayload.answer);
@@ -370,7 +388,7 @@ export default function SecondBrainApp() {
     setStatusMessage("");
 
     try {
-      const response = await api.post("/upload-youtube", { url: youtubeUrl.trim() }, { timeout: 120000 });
+      const response = await api.post("/upload-youtube", { url: youtubeUrl.trim(), user_id: sessionId }, { timeout: 120000 });
       const payload = unwrapPayload(response.data);
       setStatusMessage(`Indexed YouTube source: ${payload.title || response.data.title || youtubeUrl.trim()}`);
       setCurrentDocument({ id: payload.document_id, title: payload.title || response.data.title || youtubeUrl.trim() });
@@ -425,7 +443,7 @@ export default function SecondBrainApp() {
 
   const generateFlashcards = async () => {
     try {
-      const response = await api.post("/study/flashcards", { limit: 5 });
+      const response = await api.post("/study/flashcards", { limit: 5, user_id: sessionId });
       const payload = unwrapPayload(response.data);
       setFlashcards(payload.flashcards || response.data.flashcards || []);
       setStatusMessage("Generated new flashcards. They are scheduled for review instead of becoming due immediately.");

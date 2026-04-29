@@ -82,6 +82,7 @@ def initialize_database() -> None:
             """
             CREATE TABLE IF NOT EXISTS documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
                 source_type TEXT NOT NULL,
                 title TEXT NOT NULL,
                 source_ref TEXT,
@@ -92,6 +93,7 @@ def initialize_database() -> None:
 
             CREATE TABLE IF NOT EXISTS chunks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
                 document_id INTEGER NOT NULL,
                 chunk_index INTEGER NOT NULL,
                 chunk_text TEXT NOT NULL,
@@ -104,6 +106,7 @@ def initialize_database() -> None:
 
             CREATE TABLE IF NOT EXISTS chat_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
                 question TEXT NOT NULL,
                 answer TEXT NOT NULL,
                 topic TEXT NOT NULL,
@@ -112,6 +115,7 @@ def initialize_database() -> None:
 
             CREATE TABLE IF NOT EXISTS flashcards (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
                 chunk_id INTEGER,
                 topic TEXT NOT NULL,
                 question TEXT NOT NULL,
@@ -127,6 +131,7 @@ def initialize_database() -> None:
 
             CREATE TABLE IF NOT EXISTS graph_nodes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
                 name TEXT NOT NULL UNIQUE,
                 node_type TEXT NOT NULL DEFAULT 'concept',
                 weight INTEGER NOT NULL DEFAULT 1
@@ -134,6 +139,7 @@ def initialize_database() -> None:
 
             CREATE TABLE IF NOT EXISTS graph_edges (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'anonymous',
                 source_node_id INTEGER NOT NULL,
                 target_node_id INTEGER NOT NULL,
                 weight INTEGER NOT NULL DEFAULT 1,
@@ -143,6 +149,12 @@ def initialize_database() -> None:
             );
             """
         )
+        _ensure_column(cursor, "documents", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "chunks", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "chat_history", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "flashcards", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "graph_nodes", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
+        _ensure_column(cursor, "graph_edges", "user_id", "TEXT NOT NULL DEFAULT 'anonymous'")
         connection.commit()
 
 
@@ -157,6 +169,16 @@ def get_connection() -> Iterable[sqlite3.Connection]:
         yield connection
     finally:
         connection.close()
+
+
+def _ensure_column(cursor: sqlite3.Cursor, table: str, column: str, definition: str) -> None:
+    """Add a column to older SQLite databases without requiring manual migration."""
+    existing_columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if column not in existing_columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def dumps_json(payload: Any) -> str:

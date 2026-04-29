@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 
 from schemas import AskRequest
 from services.memory_store import (
@@ -11,6 +11,7 @@ from services.memory_store import (
     reset_learning,
 )
 from services.rag_service import query_knowledge_base
+from services.session import normalize_user_id
 
 
 router = APIRouter()
@@ -21,7 +22,7 @@ router = APIRouter()
 # =========================
 
 @router.post("/ask")
-def ask_question(payload: AskRequest):
+def ask_question(payload: AskRequest, x_session_id: str | None = Header(default=None)):
     """Main AI query endpoint."""
     try:
         return query_knowledge_base(
@@ -30,6 +31,7 @@ def ask_question(payload: AskRequest):
             topic=payload.topic,
             language=payload.language,
             document_id=payload.document_id,
+            user_id=normalize_user_id(payload.user_id or x_session_id),
         )
 
     except ValueError as exc:
@@ -49,6 +51,7 @@ def ask_question_get(
     source: str = "all",
     topic: str | None = None,
     language: str = "english",
+    x_session_id: str | None = Header(default=None),
 ):
     try:
         return query_knowledge_base(
@@ -56,6 +59,7 @@ def ask_question_get(
             source=source,
             topic=topic,
             language=language,
+            user_id=normalize_user_id(x_session_id),
         )
 
     except ValueError as exc:
@@ -70,17 +74,17 @@ def ask_question_get(
 # =========================
 
 @router.get("/history")
-def get_history():
+def get_history(x_session_id: str | None = Header(default=None)):
     try:
-        return {"messages": get_chat_history()}
+        return {"messages": get_chat_history(user_id=normalize_user_id(x_session_id))}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Could not load chat history: {exc}") from exc
 
 
 @router.delete("/history")
-def delete_history():
+def delete_history(x_session_id: str | None = Header(default=None)):
     try:
-        clear_memory()
+        clear_memory(user_id=normalize_user_id(x_session_id))
         return {"message": "Chat history cleared"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Could not clear chat history: {exc}") from exc
@@ -95,9 +99,9 @@ def delete_history():
 # =========================
 
 @router.post("/reset-learning")
-def reset_learning_flow():
+def reset_learning_flow(x_session_id: str | None = Header(default=None)):
     try:
-        reset_learning("user1")
+        reset_learning(normalize_user_id(x_session_id))
         return {"message": "Learning flow reset"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Reset failed: {exc}") from exc
