@@ -424,7 +424,10 @@ textarea {
 .flashcard-list,
 .chat-feed,
 .document-list,
-.warning-list {
+.warning-list,
+.readiness-list,
+.mission-list,
+.connection-list {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
@@ -438,6 +441,83 @@ textarea {
 
 .warning-item {
   color: var(--text-secondary);
+}
+
+.readiness-list {
+  margin-top: 1rem;
+}
+
+.readiness-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.8rem;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.readiness-item strong,
+.mission-card span,
+.value-card strong,
+.empty-hint strong {
+  color: var(--text-primary);
+}
+
+.readiness-item p,
+.mission-card small,
+.value-card p,
+.empty-hint p {
+  margin: 0.15rem 0 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.readiness-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  margin-top: 0.3rem;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.12);
+}
+
+.readiness-item.ready .readiness-dot {
+  background: #34d399;
+  box-shadow: 0 0 0 5px rgba(52, 211, 153, 0.12);
+}
+
+.mission-list {
+  margin: 1rem 0;
+}
+
+.mission-card {
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.08), transparent 50%),
+    var(--surface-bg);
+  padding: 0.95rem;
+  display: grid;
+  gap: 0.35rem;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.mission-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(56, 189, 248, 0.36);
+}
+
+.mission-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.mission-card strong {
+  color: var(--accent-solid);
+  font-size: 0.86rem;
 }
 
 .document-item {
@@ -467,6 +547,63 @@ textarea {
   align-items: center;
   border-radius: var(--radius-card);
   padding: 0.75rem 0.95rem;
+}
+
+.concept-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.concept-node {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 50%),
+    var(--surface-bg);
+  color: var(--text-primary);
+  padding: 0.55rem 0.8rem;
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.concept-node:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.48);
+}
+
+.concept-node small {
+  color: var(--accent-solid);
+}
+
+.connection-list {
+  margin-top: 0.9rem;
+}
+
+.connection-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.55rem;
+  align-items: center;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface-soft);
+  padding: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.connection-row span {
+  color: var(--text-primary);
+}
+
+.connection-row strong {
+  color: var(--accent-solid);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .chat-feed {
@@ -540,6 +677,30 @@ textarea {
   gap: 0.65rem;
   flex-wrap: wrap;
   margin-top: 1.15rem;
+}
+
+.value-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.value-card {
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    var(--surface-bg);
+  padding: 1rem;
+}
+
+.value-card span {
+  display: inline-flex;
+  margin-bottom: 0.65rem;
+  color: var(--accent-solid);
+  font-weight: 800;
+  letter-spacing: 0.08em;
 }
 
 .quick-action-button {
@@ -778,6 +939,17 @@ textarea {
   background: var(--surface-soft);
 }
 
+.empty-hint {
+  border-radius: var(--radius-card);
+  border: 1px dashed var(--panel-border);
+  background: var(--surface-soft);
+  padding: 1rem;
+}
+
+.empty-hint .ghost-button {
+  margin-top: 0.85rem;
+}
+
 .empty-title {
   font-size: 1.2rem;
   font-weight: 700;
@@ -837,7 +1009,12 @@ textarea {
 
   .stats-grid,
   .chart-grid,
+  .value-grid,
   .starter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-row {
     grid-template-columns: 1fr;
   }
 

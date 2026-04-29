@@ -68,8 +68,24 @@ const starterPrompts = [
   "Teach this step by step with an example.",
 ];
 
+const statusChecks = [
+  { key: "llm_ready", label: "AI answer engine", ready: "Groq connected", blocked: "Needs Groq API key" },
+  { key: "ingestion_ready", label: "PDF + YouTube ingestion", ready: "Core ingestion ready", blocked: "Missing ingestion dependency" },
+  { key: "embedding_model_ready", label: "Semantic retrieval", ready: "Transformer retrieval ready", blocked: "Fast hash retrieval active" },
+];
+
 function TopicPill({ topic }) {
   return <span className="topic-pill">{topic || "General"}</span>;
+}
+
+function EmptyHint({ title, text, action, onClick }) {
+  return (
+    <div className="empty-hint">
+      <strong>{title}</strong>
+      <p>{text}</p>
+      {action && <button className="ghost-button" onClick={onClick}>{action}</button>}
+    </div>
+  );
 }
 
 function unwrapPayload(payload) {
@@ -199,10 +215,52 @@ export default function SecondBrainApp() {
   }));
   const systemStatus = analytics.system_status || { ready: false, warnings: [] };
   const recentDocuments = analytics.recent_documents || [];
+  const weakTopics = analytics.study_recommendations?.weak_topics || [];
+  const topTopic = topicData.length
+    ? [...topicData].sort((left, right) => right.count - left.count)[0]
+    : null;
+  const readinessScore = statusChecks.reduce(
+    (score, check) => score + (systemStatus?.[check.key] ? 1 : 0),
+    0,
+  );
+  const graphNodeNames = new Map((graph.nodes || []).map((node) => [node.id, node.name]));
+  const graphConnections = (graph.edges || [])
+    .slice(0, 5)
+    .map((edge) => ({
+      from: graphNodeNames.get(edge.source_node_id) || "Concept",
+      to: graphNodeNames.get(edge.target_node_id) || "Concept",
+      weight: edge.weight,
+    }));
+  const sourceCount = analytics.documents_uploaded ?? 0;
   const statCards = [
     { key: "total_questions", label: "Questions Asked", value: analytics.total_questions ?? 0 },
     { key: "tracked_topics", label: "Tracked Topics", value: topicData.length },
     { key: "documents_uploaded", label: "Documents Indexed", value: analytics.documents_uploaded ?? 0 },
+  ];
+  const learningMissions = [
+    {
+      title: "Start guided learning",
+      detail: currentDocument ? `Begin from ${currentDocument.title}` : "Upload a source to unlock a guided chapter flow.",
+      cta: "Start",
+      disabled: !currentDocument,
+      prompt: "start from first topic of the pdf",
+    },
+    {
+      title: "Practice weak area",
+      detail: weakTopics[0] ? `Focus recommendation: ${weakTopics[0]}` : "Ask a few questions so weak topics can be detected.",
+      cta: "Practice",
+      disabled: !weakTopics[0],
+      prompt: weakTopics[0] ? `Create a practice quiz for ${weakTopics[0]} with answers after each question.` : "",
+    },
+    {
+      title: "Visual explanation",
+      detail: topTopic ? `Turn ${topTopic.topic} into a mini diagram and example.` : "Build visual explanations from uploaded content.",
+      cta: "Visualize",
+      disabled: !topTopic && !currentDocument,
+      prompt: topTopic
+        ? `Explain ${topTopic.topic} with a mini diagram, example, and revision points.`
+        : "Explain the active uploaded source with a mini diagram.",
+    },
   ];
 
   useEffect(() => {
@@ -339,6 +397,11 @@ export default function SecondBrainApp() {
     if (action.label === "Next") {
       askQuestion(prompt);
     }
+  };
+
+  const runMission = (mission) => {
+    if (mission.disabled || !mission.prompt) return;
+    askQuestion(mission.prompt);
   };
 
   const clearHistory = async () => {
@@ -546,13 +609,27 @@ export default function SecondBrainApp() {
           <div className={`section-block section-block-tight status-panel ${systemStatus.ready ? "status-ok" : "status-warning"}`}>
             <div className="section-head">
               <h2>System Status</h2>
-              <span>{systemStatus.ready ? "Ready" : "Needs Setup"}</span>
+              <span>{readinessScore}/{statusChecks.length} ready</span>
             </div>
             <p className="section-copy">
               {systemStatus.ready
-                ? "Core services look ready for normal usage."
-                : "Some dependencies or environment variables still need setup before the product runs at full quality."}
+                ? "Your learning engine is online: chat, retrieval, uploads, and analytics can work together."
+                : "This panel tells you exactly why a feature may feel weak before users get confused."}
             </p>
+            <div className="readiness-list">
+              {statusChecks.map((check) => {
+                const ok = Boolean(systemStatus?.[check.key]);
+                return (
+                  <div className={`readiness-item ${ok ? "ready" : "blocked"}`} key={check.key}>
+                    <span className="readiness-dot" />
+                    <div>
+                      <strong>{check.label}</strong>
+                      <p>{ok ? check.ready : check.blocked}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             {(systemStatus.warnings || []).length > 0 && (
               <div className="warning-list">
                 {systemStatus.warnings.slice(0, 4).map((warning) => (
@@ -630,10 +707,25 @@ export default function SecondBrainApp() {
             </div>
             <p className="section-copy">
               {analytics.study_recommendations?.recommendation ||
-                "Ask questions and upload more study material to unlock recommendations."}
+                "This converts your uploads into a study plan, weak-topic practice, and revision cards."}
             </p>
+            <div className="mission-list">
+              {learningMissions.map((mission) => (
+                <button
+                  className="mission-card"
+                  disabled={mission.disabled || questionLoading}
+                  key={mission.title}
+                  onClick={() => runMission(mission)}
+                  type="button"
+                >
+                  <span>{mission.title}</span>
+                  <small>{mission.detail}</small>
+                  <strong>{mission.cta}</strong>
+                </button>
+              ))}
+            </div>
             <div className="topic-row">
-              {(analytics.study_recommendations?.weak_topics || []).map((topic) => (
+              {weakTopics.map((topic) => (
                 <TopicPill topic={topic} key={topic} />
               ))}
             </div>
@@ -644,14 +736,37 @@ export default function SecondBrainApp() {
               <h2>Knowledge Graph</h2>
               <span>{graph.nodes.length} nodes</span>
             </div>
-            <div className="graph-preview">
-              {graph.nodes.slice(0, 8).map((node) => (
-                <div className="graph-node" key={node.id}>
-                  <span>{node.name}</span>
-                  <small>{node.weight}</small>
+            {graph.nodes.length === 0 ? (
+              <EmptyHint
+                title="No graph yet"
+                text="Upload a PDF, image, or YouTube source. The app will extract concepts and show how they connect."
+              />
+            ) : (
+              <>
+                <div className="concept-cloud">
+                  {graph.nodes.slice(0, 10).map((node) => (
+                    <button
+                      className="concept-node"
+                      key={node.id}
+                      onClick={() => askQuestion(`Explain how ${node.name} connects to my uploaded material with an example.`)}
+                      type="button"
+                    >
+                      <span>{node.name}</span>
+                      <small>{node.weight}</small>
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div className="connection-list">
+                  {graphConnections.map((edge) => (
+                    <div className="connection-row" key={`${edge.from}-${edge.to}-${edge.weight}`}>
+                      <span>{edge.from}</span>
+                      <strong>connects to</strong>
+                      <span>{edge.to}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="section-block">
@@ -680,9 +795,9 @@ export default function SecondBrainApp() {
             <div className="chat-hero">
               <div className="chat-hero-copy">
                 <p className="eyebrow">AI Knowledge Engine</p>
-                <h2 className="panel-title">Ask across your notes, videos, and memory</h2>
+                <h2 className="panel-title">Not just chat. A study OS for your uploaded knowledge.</h2>
                 <p className="section-copy">
-                  A focused workspace for explanation, summarization, revision, and guided study.
+                  It remembers your sources, builds concept maps, detects weak topics, schedules flashcards, and answers with citations from your material.
                 </p>
               </div>
               <div className="chat-hero-status">
@@ -693,6 +808,24 @@ export default function SecondBrainApp() {
                     <p>{language === "hinglish" ? "Hinglish mode enabled" : "English mode enabled"}</p>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="value-grid">
+              <div className="value-card">
+                <span>01</span>
+                <strong>Source-grounded answers</strong>
+                <p>Answers come from uploaded PDFs, OCR images, YouTube transcripts, and recent memory.</p>
+              </div>
+              <div className="value-card">
+                <span>02</span>
+                <strong>Learning workflow</strong>
+                <p>Start topics, move next, revise, summarize, and generate flashcards from the same source.</p>
+              </div>
+              <div className="value-card">
+                <span>03</span>
+                <strong>Personal progress</strong>
+                <p>Analytics, weak-topic detection, due cards, and graph concepts show what to study next.</p>
               </div>
             </div>
 
@@ -820,7 +953,18 @@ export default function SecondBrainApp() {
                 <span>{flashcards.length}</span>
               </div>
               <div className="flashcard-list">
-                {flashcards.length === 0 && <p className="section-copy">No flashcards are due right now.</p>}
+                {flashcards.length === 0 && (
+                  <EmptyHint
+                    title="No cards due"
+                    text={
+                      sourceCount
+                        ? "Generate cards from your sources. New cards are scheduled for later, like real spaced repetition."
+                        : "Upload study material first, then generate flashcards from real chunks."
+                    }
+                    action={sourceCount ? "Generate flashcards" : undefined}
+                    onClick={generateFlashcards}
+                  />
+                )}
                 {flashcards.map((card) => (
                   <div className="flashcard" key={card.id}>
                     <TopicPill topic={card.topic} />
