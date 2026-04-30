@@ -8,6 +8,7 @@ from services.ingestion_service import ingest_image
 from services.session import normalize_user_id
 
 router = APIRouter()
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
 @router.post("/upload-image")
@@ -19,6 +20,8 @@ async def upload_image(file: UploadFile = File(...), x_session_id: str | None = 
         contents = await file.read()
         if not contents:
             raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+        if len(contents) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Image is too large. Maximum upload size is 20MB.")
         result = ingest_image(contents, file.filename or "uploaded-image", user_id=normalize_user_id(x_session_id))
         return {"message": "Image processed successfully", **result}
     except ValueError as exc:

@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -36,6 +37,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    """Optional shared-secret guard for deployed API endpoints."""
+    configured_key = os.getenv("SECOND_BRAIN_API_KEY", "").strip()
+    if (
+        configured_key
+        and request.url.path.startswith("/api")
+        and request.url.path != "/api/health"
+        and request.method != "OPTIONS"
+        and request.headers.get("x-api-key") != configured_key
+    ):
+        return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key."})
+
+    return await call_next(request)
 
 
 @app.get("/health")

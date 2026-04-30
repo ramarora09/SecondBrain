@@ -16,6 +16,7 @@ const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ||
   "https://secondbrain-w70q.onrender.com/api"
 ).trim();
+const apiKey = (import.meta.env.VITE_API_KEY || "").trim();
 
 function getSessionId() {
   const key = "second_brain_session_id";
@@ -35,8 +36,39 @@ const api = axios.create({
   baseURL: apiBaseUrl,
   headers: {
     "X-Session-Id": sessionId,
+    ...(apiKey ? { "X-API-Key": apiKey } : {}),
   },
 });
+
+function ErrorBoundary({ children }) {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    const handleError = () => setHasError(true);
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleError);
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleError);
+    };
+  }, []);
+
+  if (hasError) {
+    return (
+      <div className="app-shell app-root error-boundary-screen">
+        <div className="workspace-card error-boundary-card">
+          <h1>Something went wrong</h1>
+          <p>The workspace hit a UI error. Refresh the page and try again.</p>
+          <button className="primary-button" onClick={() => window.location.reload()}>
+            Refresh
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return children;
+}
 
 const sidebarSections = [
   { id: "dashboard", label: "Dashboard" },
@@ -76,6 +108,10 @@ const statusChecks = [
   { key: "embedding_model_ready", label: "Semantic retrieval", ready: "Transformer retrieval ready", blocked: "Fast hash retrieval active" },
 ];
 
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const PDF_TYPES = new Set(["application/pdf"]);
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+
 const navMeta = {
   dashboard: { icon: "D", count: null },
   notes: { icon: "N", count: "notes" },
@@ -96,6 +132,14 @@ function EmptyHint({ title, text, action, onClick }) {
       <p>{text}</p>
       {action && <button className="ghost-button" onClick={onClick}>{action}</button>}
     </div>
+  );
+}
+
+export default function SecondBrainApp() {
+  return (
+    <ErrorBoundary>
+      <SecondBrainAppContent />
+    </ErrorBoundary>
   );
 }
 
@@ -193,7 +237,7 @@ function MessageBody({ text }) {
   );
 }
 
-export default function SecondBrainApp() {
+function SecondBrainAppContent() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [activeSection, setActiveSection] = useState("chat");
@@ -225,6 +269,7 @@ export default function SecondBrainApp() {
   const [recommendations, setRecommendations] = useState([]);
   const [activity, setActivity] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [coldStartNotice, setColdStartNotice] = useState(false);
 
   const profile = {
     name: "Your Name",
@@ -299,6 +344,29 @@ export default function SecondBrainApp() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  const withColdStartNotice = async (requestPromise) => {
+    const timer = window.setTimeout(() => setColdStartNotice(true), 3000);
+    try {
+      return await requestPromise;
+    } finally {
+      window.clearTimeout(timer);
+      setColdStartNotice(false);
+    }
+  };
+
+  const validateUploadFile = (file, allowedTypes, label) => {
+    if (!file) return false;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setStatusMessage(`${label} is too large. Maximum upload size is 20MB.`);
+      return false;
+    }
+    if (allowedTypes.size && !allowedTypes.has(file.type)) {
+      setStatusMessage(`Unsupported ${label.toLowerCase()} type. Use PDF, PNG, JPG, or WebP as appropriate.`);
+      return false;
+    }
+    return true;
+  };
 
   useEffect(() => {
     const sections = sidebarSections
@@ -388,14 +456,14 @@ export default function SecondBrainApp() {
     setStatusMessage("");
 
     try {
-      const response = await api.post("/ask", {
+      const response = await withColdStartNotice(api.post("/ask", {
         question: currentQuestion,
         source: "all",
         language,
         document_id: currentDocument?.id ?? null,
         user_id: sessionId,
         strict: strictMode,
-      });
+      }));
       const answerPayload = unwrapPayload(response.data);
       const safeAnswer = normalizeAssistantText(answerPayload.answer);
       if (answerPayload.document_id) {
@@ -484,6 +552,7 @@ export default function SecondBrainApp() {
 
   const uploadPdf = async () => {
     if (!pdfFile) return;
+    if (!validateUploadFile(pdfFile, PDF_TYPES, "PDF")) return;
 
     const formData = new FormData();
     formData.append("file", pdfFile);
@@ -492,10 +561,10 @@ export default function SecondBrainApp() {
     setStatusMessage("");
 
     try {
-      const response = await api.post("/upload-pdf", formData, {
+      const response = await withColdStartNotice(api.post("/upload-pdf", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000,
-      });
+      }));
       const payload = unwrapPayload(response.data);
       setStatusMessage(`Indexed PDF: ${payload.title || response.data.title || "uploaded document"}`);
       setCurrentDocument({ id: payload.document_id, title: payload.title || response.data.title || "uploaded document" });
@@ -519,7 +588,7 @@ export default function SecondBrainApp() {
     setStatusMessage("");
 
     try {
-      const response = await api.post(
+      const response = await withColdStartNotice(api.post(
         "/upload-youtube",
         {
           url: youtubeUrl.trim(),
@@ -528,7 +597,7 @@ export default function SecondBrainApp() {
           user_id: sessionId,
         },
         { timeout: 120000 },
-      );
+      ));
       const payload = unwrapPayload(response.data);
       setStatusMessage(`Indexed YouTube source: ${payload.title || response.data.title || youtubeUrl.trim()}`);
       setCurrentDocument({ id: payload.document_id, title: payload.title || response.data.title || youtubeUrl.trim() });
@@ -548,6 +617,7 @@ export default function SecondBrainApp() {
 
   const uploadImage = async () => {
     if (!imageFile) return;
+    if (!validateUploadFile(imageFile, IMAGE_TYPES, "Image")) return;
 
     const formData = new FormData();
     formData.append("file", imageFile);
@@ -556,10 +626,10 @@ export default function SecondBrainApp() {
     setStatusMessage("");
 
     try {
-      const response = await api.post("/upload-image", formData, {
+      const response = await withColdStartNotice(api.post("/upload-image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000,
-      });
+      }));
       const payload = unwrapPayload(response.data);
       if (payload.warning || response.data.warning) {
         setStatusMessage(payload.warning || response.data.warning);
@@ -585,7 +655,7 @@ export default function SecondBrainApp() {
 
   const generateFlashcards = async () => {
     try {
-      const response = await api.post("/study/flashcards", { limit: 5, user_id: sessionId });
+      const response = await withColdStartNotice(api.post("/study/flashcards", { limit: 5, user_id: sessionId }));
       const payload = unwrapPayload(response.data);
       setFlashcards(payload.flashcards || response.data.flashcards || []);
       setStatusMessage("Generated new flashcards. They are scheduled for review instead of becoming due immediately.");
@@ -809,7 +879,10 @@ export default function SecondBrainApp() {
               <input
                 type="file"
                 accept="application/pdf"
-                onChange={(event) => setPdfFile(event.target.files?.[0] || null)}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  setPdfFile(file && validateUploadFile(file, PDF_TYPES, "PDF") ? file : null);
+                }}
               />
             </label>
             <button className="primary-button" onClick={uploadPdf} disabled={!pdfFile || uploadLoading}>
@@ -821,7 +894,10 @@ export default function SecondBrainApp() {
               <input
                 type="file"
                 accept="image/*"
-                onChange={(event) => setImageFile(event.target.files?.[0] || null)}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  setImageFile(file && validateUploadFile(file, IMAGE_TYPES, "Image") ? file : null);
+                }}
               />
             </label>
             <button className="secondary-button" onClick={uploadImage} disabled={!imageFile || uploadLoading}>
@@ -1200,6 +1276,11 @@ export default function SecondBrainApp() {
                 {language === "hinglish" ? "Poochho" : "Send"}
               </button>
             </div>
+            {coldStartNotice && (
+              <p className="status-text wakeup-text">
+                Waking up the server. First request on a free host can take around 30 seconds.
+              </p>
+            )}
             {statusMessage && <p className="status-text">{statusMessage}</p>}
           </section>
 

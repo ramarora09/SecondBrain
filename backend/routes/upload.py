@@ -8,6 +8,7 @@ from services.ingestion_service import ingest_pdf
 from services.session import normalize_user_id
 
 router = APIRouter()
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
 @router.post("/upload-pdf")
@@ -19,6 +20,8 @@ async def upload_pdf(file: UploadFile = File(...), x_session_id: str | None = He
         contents = await file.read()
         if not contents:
             raise HTTPException(status_code=400, detail="Uploaded PDF is empty.")
+        if len(contents) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="PDF is too large. Maximum upload size is 20MB.")
         result = ingest_pdf(contents, file.filename or "uploaded.pdf", user_id=normalize_user_id(x_session_id))
         return {"message": "PDF processed successfully", **result}
     except ValueError as exc:
