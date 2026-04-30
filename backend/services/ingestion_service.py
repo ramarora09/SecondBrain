@@ -96,22 +96,38 @@ def ingest_pdf(file_bytes: bytes, filename: str, user_id: str = "anonymous") -> 
 def ingest_youtube(url: str, user_id: str = "anonymous") -> dict:
     """Extract, embed, and persist a YouTube transcript."""
     text = extract_transcript(url)
+    return ingest_youtube_text(url=url, transcript=text, user_id=user_id)
+
+
+def ingest_youtube_text(
+    *,
+    url: str,
+    transcript: str,
+    user_id: str = "anonymous",
+    title: str | None = None,
+) -> dict:
+    """Embed and persist a manually supplied YouTube transcript."""
+    text = " ".join((transcript or "").split()).strip()
+    if len(text) < 40:
+        raise ValueError("Transcript is too short to index. Paste more of the video transcript or notes.")
+
     chunks, embeddings = create_embeddings(text)
 
     if not chunks:
         raise ValueError("Could not create embeddings from the YouTube transcript.")
 
     topic = detect_topic(text[:2000])
+    resolved_title = title or url
     document_id = store_document(
         source_type="youtube",
         user_id=user_id,
-        title=url,
+        title=resolved_title,
         source_ref=url,
         topic=topic,
         content=text,
         chunks=chunks,
         embeddings=embeddings,
-        metadata={"url": url},
+        metadata={"url": url, "manual_transcript": title is not None},
     )
 
     upsert_graph_from_text(text[:5000], user_id=user_id)
@@ -120,12 +136,12 @@ def ingest_youtube(url: str, user_id: str = "anonymous") -> dict:
         event_type="document_indexed",
         entity_type="document",
         entity_id=document_id,
-        metadata={"source_type": "youtube", "title": url, "topic": topic, "chunks": len(chunks)},
+        metadata={"source_type": "youtube", "title": resolved_title, "topic": topic, "chunks": len(chunks)},
     )
 
     return {
         "document_id": document_id,
-        "title": url,
+        "title": resolved_title,
         "topic": topic,
         "chunks_stored": len(chunks),
     }

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException
 
 from schemas import YouTubeIngestRequest
-from services.ingestion_service import ingest_youtube
+from services.ingestion_service import ingest_youtube, ingest_youtube_text
 from services.session import normalize_user_id
 
 router = APIRouter()
@@ -17,7 +17,16 @@ def upload_youtube(payload: YouTubeIngestRequest, x_session_id: str | None = Hea
     try:
         if not payload.url.strip():
             raise HTTPException(status_code=400, detail="Please provide a YouTube URL.")
-        result = ingest_youtube(payload.url, user_id=normalize_user_id(payload.user_id or x_session_id))
+        user_id = normalize_user_id(payload.user_id or x_session_id)
+        if payload.transcript and payload.transcript.strip():
+            result = ingest_youtube_text(
+                url=payload.url,
+                transcript=payload.transcript,
+                title=payload.title or payload.url,
+                user_id=user_id,
+            )
+        else:
+            result = ingest_youtube(payload.url, user_id=user_id)
         return {"message": "YouTube video processed", **result}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

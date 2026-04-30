@@ -8,12 +8,14 @@ from urllib.parse import parse_qs, urlparse
 try:
     from youtube_transcript_api import (
         NoTranscriptFound,
+        RequestBlocked,
         TranscriptsDisabled,
         VideoUnavailable,
         YouTubeTranscriptApi,
     )
 except Exception:
     NoTranscriptFound = Exception
+    RequestBlocked = Exception
     TranscriptsDisabled = Exception
     VideoUnavailable = Exception
     YouTubeTranscriptApi = None
@@ -124,8 +126,22 @@ def extract_transcript(url: str) -> str:
             ) from exc
     except VideoUnavailable as exc:
         raise ValueError("This YouTube video is unavailable.") from exc
+    except RequestBlocked as exc:
+        raise ValueError(
+            "YouTube is blocking automatic transcript requests from this server. "
+            "Paste the transcript manually in the YouTube upload box and I can still index it."
+        ) from exc
     except Exception as exc:
-        raise ValueError(f"Failed to fetch YouTube transcript: {exc}") from exc
+        message = str(exc)
+        if "blocking requests from your IP" in message or "RequestBlocked" in message or "IpBlocked" in message:
+            raise ValueError(
+                "YouTube is blocking automatic transcript requests from this server. "
+                "Paste the transcript manually in the YouTube upload box and I can still index it."
+            ) from exc
+        raise ValueError(
+            "Could not fetch this YouTube transcript automatically. "
+            "If captions are available, copy the transcript and paste it manually."
+        ) from exc
 
     text = _normalize_transcript_items(transcript)
     if not text:

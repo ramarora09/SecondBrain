@@ -212,6 +212,7 @@ export default function SecondBrainApp() {
   const [pdfFile, setPdfFile] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeTranscript, setYoutubeTranscript] = useState("");
   const [flashcards, setFlashcards] = useState([]);
   const [graph, setGraph] = useState({ nodes: [], edges: [] });
   const [statusMessage, setStatusMessage] = useState("");
@@ -518,16 +519,27 @@ export default function SecondBrainApp() {
     setStatusMessage("");
 
     try {
-      const response = await api.post("/upload-youtube", { url: youtubeUrl.trim(), user_id: sessionId }, { timeout: 120000 });
+      const response = await api.post(
+        "/upload-youtube",
+        {
+          url: youtubeUrl.trim(),
+          transcript: youtubeTranscript.trim() || undefined,
+          title: youtubeTranscript.trim() ? `YouTube notes: ${youtubeUrl.trim()}` : undefined,
+          user_id: sessionId,
+        },
+        { timeout: 120000 },
+      );
       const payload = unwrapPayload(response.data);
       setStatusMessage(`Indexed YouTube source: ${payload.title || response.data.title || youtubeUrl.trim()}`);
       setCurrentDocument({ id: payload.document_id, title: payload.title || response.data.title || youtubeUrl.trim() });
       setYoutubeUrl("");
+      setYoutubeTranscript("");
       setUploadLoading(false);
       setUploadStatus("Refreshing dashboard...");
       void refreshSidebarInBackground().finally(() => setUploadStatus("Ready"));
     } catch (error) {
-      setStatusMessage(error.response?.data?.detail || "YouTube ingestion failed.");
+      const detail = error.response?.data?.detail || "YouTube ingestion failed.";
+      setStatusMessage(`${detail} Paste the transcript below to index it manually.`);
       setUploadStatus("Ready");
     } finally {
       setUploadLoading(false);
@@ -824,8 +836,16 @@ export default function SecondBrainApp() {
                 placeholder="https://www.youtube.com/watch?v=..."
               />
             </label>
+            <label className="upload-field">
+              <span>Optional transcript fallback</span>
+              <textarea
+                value={youtubeTranscript}
+                onChange={(event) => setYoutubeTranscript(event.target.value)}
+                placeholder="If YouTube blocks automatic captions, paste the transcript or your video notes here..."
+              />
+            </label>
             <button className="secondary-button" onClick={uploadYoutube} disabled={!youtubeUrl.trim() || uploadLoading}>
-              Index YouTube
+              {youtubeTranscript.trim() ? "Index Transcript" : "Index YouTube"}
             </button>
           </div>
 

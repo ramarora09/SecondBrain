@@ -387,6 +387,17 @@ textarea {
   outline: none;
 }
 
+.upload-field textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  background: transparent;
+  color: var(--text-strong);
+  border: none;
+  outline: none;
+  line-height: 1.5;
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button {
