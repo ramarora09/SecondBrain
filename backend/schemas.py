@@ -57,3 +57,9 @@ class NoteUpdateRequest(BaseModel):
     body: str | None = None
     topic: str | None = None
     tags: list[str] | None = None
+
+
+class DocumentUpdateRequest(BaseModel):
+    """Update an indexed source."""
+
+    title: str = Field(..., min_length=1, max_length=220)

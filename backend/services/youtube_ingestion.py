@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import re
 from urllib.parse import parse_qs, urlparse
 
 try:
+    from requests import ConnectionError as RequestsConnectionError
+    from requests import Timeout as RequestsTimeout
+    from requests.exceptions import ProxyError as RequestsProxyError
     from youtube_transcript_api import (
         NoTranscriptFound,
         RequestBlocked,
@@ -13,12 +17,21 @@ try:
         VideoUnavailable,
         YouTubeTranscriptApi,
     )
+    from youtube_transcript_api.proxies import GenericProxyConfig, WebshareProxyConfig
 except Exception:
+    RequestsConnectionError = Exception
+    RequestsProxyError = Exception
+    RequestsTimeout = Exception
     NoTranscriptFound = Exception
     RequestBlocked = Exception
     TranscriptsDisabled = Exception
     VideoUnavailable = Exception
     YouTubeTranscriptApi = None
+    GenericProxyConfig = None
+    WebshareProxyConfig = None
+
+
+DEFAULT_LANGUAGES = ("en", "hi", "en-US", "en-GB")
 
 
 def extract_video_id(url: str) -> str:
@@ -46,14 +59,56 @@ def extract_video_id(url: str) -> str:
     return ""
 
 
+def _preferred_languages() -> list[str]:
+    """Read transcript language preference from env, preserving a useful default."""
+    configured = os.getenv("YOUTUBE_TRANSCRIPT_LANGUAGES", "")
+    languages = [lang.strip() for lang in configured.split(",") if lang.strip()]
+    return languages or list(DEFAULT_LANGUAGES)
+
+
+def _proxy_config():
+    """Build an optional transcript API proxy config for production hosts."""
+    if GenericProxyConfig is None or WebshareProxyConfig is None:
+        return None
+
+    webshare_user = os.getenv("WEBSHARE_PROXY_USERNAME", "").strip()
+    webshare_password = os.getenv("WEBSHARE_PROXY_PASSWORD", "").strip()
+    if webshare_user and webshare_password:
+        locations = [
+            item.strip()
+            for item in os.getenv("WEBSHARE_PROXY_LOCATIONS", "").split(",")
+            if item.strip()
+        ]
+        retries = int(os.getenv("WEBSHARE_RETRIES_WHEN_BLOCKED", "10"))
+        return WebshareProxyConfig(
+            proxy_username=webshare_user,
+            proxy_password=webshare_password,
+            filter_ip_locations=locations or None,
+            retries_when_blocked=retries,
+        )
+
+    proxy_url = os.getenv("YOUTUBE_PROXY_URL", "").strip()
+    if proxy_url:
+        return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+
+    return None
+
+
+def _transcript_api():
+    if YouTubeTranscriptApi is None:
+        raise RuntimeError("youtube-transcript-api is not installed")
+    return YouTubeTranscriptApi(proxy_config=_proxy_config())
+
+
 def _fetch_primary_transcript(video_id: str):
     """Support both older and newer youtube-transcript-api variants."""
+    languages = _preferred_languages()
     if hasattr(YouTubeTranscriptApi, "get_transcript"):
-        return YouTubeTranscriptApi.get_transcript(video_id)
+        return YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
 
-    api = YouTubeTranscriptApi()
+    api = _transcript_api()
     if hasattr(api, "fetch"):
-        return api.fetch(video_id)
+        return api.fetch(video_id, languages=languages)
 
     raise RuntimeError("Unsupported youtube-transcript-api version")
 
@@ -63,7 +118,7 @@ def _list_transcripts(video_id: str):
     if hasattr(YouTubeTranscriptApi, "list_transcripts"):
         return YouTubeTranscriptApi.list_transcripts(video_id)
 
-    api = YouTubeTranscriptApi()
+    api = _transcript_api()
     if hasattr(api, "list"):
         return api.list(video_id)
 
@@ -75,6 +130,28 @@ def _fetch_from_transcript_object(transcript_obj):
     if hasattr(transcript_obj, "fetch"):
         return transcript_obj.fetch()
     return transcript_obj
+
+
+def _choose_transcript(transcript_list):
+    """Choose the best manual/generated transcript across configured languages."""
+    languages = _preferred_languages()
+
+    for finder in ("find_manually_created_transcript", "find_generated_transcript", "find_transcript"):
+        if hasattr(transcript_list, finder):
+            try:
+                return getattr(transcript_list, finder)(languages)
+            except Exception:
+                pass
+
+    try:
+        available = list(transcript_list)
+    except Exception:
+        available = []
+
+    if available:
+        return available[0]
+
+    return None
 
 
 def _normalize_transcript_items(transcript) -> str:
@@ -108,17 +185,9 @@ def extract_transcript(url: str) -> str:
     except (NoTranscriptFound, TranscriptsDisabled):
         try:
             transcript_list = _list_transcripts(video_id)
-            transcript_obj = None
-
-            if hasattr(transcript_list, "find_generated_transcript"):
-                try:
-                    transcript_obj = transcript_list.find_generated_transcript(["en", "hi"])
-                except Exception:
-                    transcript_obj = None
-
-            if transcript_obj is None and hasattr(transcript_list, "find_transcript"):
-                transcript_obj = transcript_list.find_transcript(["en", "hi"])
-
+            transcript_obj = _choose_transcript(transcript_list)
+            if transcript_obj is None:
+                raise ValueError("No transcript matched the configured languages.")
             transcript = _fetch_from_transcript_object(transcript_obj)
         except Exception as exc:
             raise ValueError(
@@ -129,14 +198,19 @@ def extract_transcript(url: str) -> str:
     except RequestBlocked as exc:
         raise ValueError(
             "YouTube is blocking automatic transcript requests from this server. "
-            "Paste the transcript manually in the YouTube upload box and I can still index it."
+            "Configure a YouTube transcript proxy on the backend or paste the transcript manually."
+        ) from exc
+    except (RequestsConnectionError, RequestsProxyError, RequestsTimeout) as exc:
+        raise ValueError(
+            "The backend could not reach YouTube to fetch captions. "
+            "Check server network/proxy settings or paste the transcript manually."
         ) from exc
     except Exception as exc:
         message = str(exc)
         if "blocking requests from your IP" in message or "RequestBlocked" in message or "IpBlocked" in message:
             raise ValueError(
                 "YouTube is blocking automatic transcript requests from this server. "
-                "Paste the transcript manually in the YouTube upload box and I can still index it."
+                "Configure a YouTube transcript proxy on the backend or paste the transcript manually."
             ) from exc
         raise ValueError(
             "Could not fetch this YouTube transcript automatically. "

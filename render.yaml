@@ -16,6 +16,18 @@ services:
         value: 8
       - key: PDF_OCR_MAX_CHARS
         value: 50000
+      - key: YOUTUBE_TRANSCRIPT_LANGUAGES
+        value: en,hi,en-US,en-GB
+      - key: YOUTUBE_PROXY_URL
+        sync: false
+      - key: WEBSHARE_PROXY_USERNAME
+        sync: false
+      - key: WEBSHARE_PROXY_PASSWORD
+        sync: false
+      - key: WEBSHARE_PROXY_LOCATIONS
+        sync: false
+      - key: WEBSHARE_RETRIES_WHEN_BLOCKED
+        value: 10
       - key: SECOND_BRAIN_API_KEY
         sync: false
       - key: GROQ_API_KEY

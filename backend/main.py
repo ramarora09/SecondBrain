@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routes import analytics, graph, image, memory, notes, query, recommendations, study, summary, upload, youtube
+from routes import analytics, documents, graph, image, memory, notes, query, recommendations, study, summary, upload, youtube
 from services.analytics_service import get_system_status
 from services.database import initialize_database
 
@@ -62,6 +62,7 @@ def health_check():
 
 
 app.include_router(upload.router, prefix="/api")
+app.include_router(documents.router, prefix="/api")
 app.include_router(image.router, prefix="/api")
 app.include_router(query.router, prefix="/api")
 app.include_router(youtube.router, prefix="/api")

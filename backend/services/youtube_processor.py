@@ -1,19 +1,7 @@
-from youtube_transcript_api import YouTubeTranscriptApi
+"""Backward-compatible YouTube helpers.
 
-def get_video_id(url):
-    return url.split("v=")[-1].split("&")[0]
+The active ingestion route uses services.youtube_ingestion directly. Keep these
+aliases so older imports still get the hardened implementation.
+"""
 
-def extract_transcript(url):
-    
-    try:
-        video_id = get_video_id(url)
-        
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        
-        text = " ".join([t["text"] for t in transcript])
-        
-        return text
-    
-    except Exception as e:
-        print("YT ERROR:", str(e))
-        return "No transcript available"
+from services.youtube_ingestion import extract_transcript, extract_video_id as get_video_id

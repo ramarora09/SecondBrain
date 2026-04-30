@@ -266,6 +266,7 @@ function SecondBrainAppContent() {
   const [uploadStatus, setUploadStatus] = useState("Ready");
   const [currentDocument, setCurrentDocument] = useState(null);
   const [notes, setNotes] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [activity, setActivity] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -282,7 +283,7 @@ function SecondBrainAppContent() {
     count,
   }));
   const systemStatus = analytics.system_status || { ready: false, warnings: [] };
-  const recentDocuments = analytics.recent_documents || [];
+  const recentDocuments = documents.length ? documents : analytics.recent_documents || [];
   const weakTopics = analytics.study_recommendations?.weak_topics || [];
   const topTopic = topicData.length
     ? [...topicData].sort((left, right) => right.count - left.count)[0]
@@ -396,13 +397,14 @@ function SecondBrainAppContent() {
 
   const loadSidebarData = async () => {
     try {
-      const [analyticsRes, dueFlashcardsRes, graphRes, recommendationsRes, notesRes, activityRes] = await Promise.all([
+      const [analyticsRes, dueFlashcardsRes, graphRes, recommendationsRes, notesRes, activityRes, documentsRes] = await Promise.all([
         api.get("/analytics"),
         api.get("/study/flashcards/due"),
         api.get("/graph"),
         api.get("/recommendations"),
         api.get("/notes"),
         api.get("/activity"),
+        api.get("/documents"),
       ]);
 
       setAnalytics(unwrapPayload(analyticsRes.data));
@@ -411,8 +413,10 @@ function SecondBrainAppContent() {
       setRecommendations(unwrapPayload(recommendationsRes.data).recommendations || []);
       setNotes(unwrapPayload(notesRes.data).notes || []);
       setActivity(unwrapPayload(activityRes.data).events || []);
-      const latestDocument = unwrapPayload(analyticsRes.data)?.recent_documents?.[0];
-      if (latestDocument) {
+      const loadedDocuments = unwrapPayload(documentsRes.data).documents || documentsRes.data.documents || [];
+      setDocuments(loadedDocuments);
+      const latestDocument = loadedDocuments[0] || unwrapPayload(analyticsRes.data)?.recent_documents?.[0];
+      if (latestDocument && !currentDocument) {
         setCurrentDocument({ id: latestDocument.id, title: latestDocument.title });
       }
     } catch (error) {
@@ -444,6 +448,8 @@ function SecondBrainAppContent() {
 
   useEffect(() => {
     loadDashboard();
+    // Dashboard bootstrap should run once for the current browser session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const askQuestion = async (questionOverride) => {
@@ -519,6 +525,35 @@ function SecondBrainAppContent() {
       await loadDashboard();
     } catch (error) {
       setStatusMessage(error.response?.data?.detail || "Unable to clear chat history.");
+    }
+  };
+
+  const selectDocument = async (document) => {
+    setCurrentDocument({ id: document.id, title: document.title });
+    try {
+      const response = await api.get(`/documents/${document.id}`);
+      const payload = unwrapPayload(response.data);
+      setStatusMessage(`Active source: ${payload.title}. ${payload.character_count || 0} characters indexed.`);
+    } catch (error) {
+      setStatusMessage(error.response?.data?.detail || `Active source: ${document.title}`);
+    }
+  };
+
+  const deleteSource = async (document, event) => {
+    event.stopPropagation();
+    const confirmed = window.confirm(`Delete "${document.title}" from this workspace?`);
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/documents/${document.id}`);
+      setDocuments((prev) => prev.filter((item) => item.id !== document.id));
+      if (currentDocument?.id === document.id) {
+        setCurrentDocument(null);
+      }
+      setStatusMessage(`Deleted source: ${document.title}`);
+      await loadSidebarData();
+    } catch (error) {
+      setStatusMessage(error.response?.data?.detail || "Could not delete source.");
     }
   };
 
@@ -1005,11 +1040,39 @@ function SecondBrainAppContent() {
               {recentDocuments.length === 0 && (
                 <p className="section-copy">Indexed sources will appear here after uploads.</p>
               )}
-              {recentDocuments.slice(0, 6).map((document) => (
-                <div className="document-item" key={`${document.id}-${document.title}`}>
+              {recentDocuments.slice(0, 8).map((document) => (
+                <div
+                  className={`document-item ${currentDocument?.id === document.id ? "active" : ""}`}
+                  key={`${document.id}-${document.title}`}
+                  onClick={() => selectDocument(document)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      selectDocument(document);
+                    }
+                  }}
+                >
                   <div>
                     <p className="document-title">{document.title}</p>
                     <p className="document-meta">{document.source_type} | {document.topic}</p>
+                  </div>
+                  <div className="document-actions">
+                    <button
+                      className="tiny-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        selectDocument(document);
+                        askQuestion(`Summarize ${document.title} with key points and revision notes.`);
+                      }}
+                      type="button"
+                    >
+                      Ask
+                    </button>
+                    <button className="tiny-button danger" onClick={(event) => deleteSource(document, event)} type="button">
+                      Delete
+                    </button>
                   </div>
                 </div>
               ))}

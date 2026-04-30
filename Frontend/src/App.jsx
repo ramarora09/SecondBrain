@@ -12,7 +12,7 @@ export default function App() {
     try {
       const res = await axios.get("/api/analytics");
       setAnalytics(res.data);
-    } catch (err) {
+    } catch {
       console.log("Analytics error");
     }
   };
@@ -21,21 +21,23 @@ export default function App() {
     try {
       const res = await axios.get("/api/history");
       setMessages(res.data.messages || []);
-    } catch (err) {
+    } catch {
       console.log("History error");
     }
   };
 
   useEffect(() => {
-    fetchAnalytics();
-    fetchHistory();
+    void Promise.resolve().then(() => {
+      fetchAnalytics();
+      fetchHistory();
+    });
   }, []);
 
   const clearHistory = async () => {
     try {
       await axios.delete("/api/history");
       setMessages([]);
-    } catch (err) {
+    } catch {
       console.log("Clear history error");
     }
   };

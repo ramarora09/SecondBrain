@@ -565,10 +565,44 @@ textarea {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   border-radius: var(--radius-card);
   padding: 0.8rem 0.95rem;
   border: 1px solid var(--panel-border);
   background: var(--surface-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.document-item.active {
+  border-color: rgba(61, 217, 182, 0.48);
+  background: linear-gradient(135deg, rgba(61, 217, 182, 0.1), var(--surface-bg));
+}
+
+.document-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.tiny-button {
+  border: 1px solid var(--panel-border);
+  background: var(--surface-strong);
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 0.38rem 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.tiny-button:hover {
+  transform: translateY(-1px);
+}
+
+.tiny-button.danger {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.35);
 }
 
 .note-item,

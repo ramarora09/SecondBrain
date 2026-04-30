@@ -240,6 +240,7 @@ def get_connection() -> Iterable[sqlite3.Connection]:
     """Yield a SQLite connection configured for dictionary-like row access."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(_resolve_database_path())
+    connection.execute("PRAGMA foreign_keys = ON")
     connection.row_factory = sqlite3.Row
 
     try:

@@ -211,6 +211,93 @@ def get_document_content(document_id: int, user_id: str = "anonymous") -> dict[s
     return dict(row) if row else None
 
 
+def update_document_title(document_id: int, title: str, user_id: str = "anonymous") -> dict[str, Any] | None:
+    """Rename a document and keep chunk metadata in sync."""
+    clean_title = " ".join((title or "").split()).strip()
+    if not clean_title:
+        raise ValueError("Document title cannot be empty.")
+
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, source_type, title, source_ref, topic, created_at
+            FROM documents
+            WHERE id = ? AND user_id = ?
+            LIMIT 1
+            """,
+            (document_id, user_id),
+        ).fetchone()
+        if row is None:
+            return None
+
+        connection.execute(
+            "UPDATE documents SET title = ? WHERE id = ? AND user_id = ?",
+            (clean_title, document_id, user_id),
+        )
+
+        chunk_rows = connection.execute(
+            "SELECT id, metadata FROM chunks WHERE document_id = ? AND user_id = ?",
+            (document_id, user_id),
+        ).fetchall()
+        for chunk_row in chunk_rows:
+            metadata = loads_json(chunk_row["metadata"], {})
+            metadata["title"] = clean_title
+            connection.execute(
+                "UPDATE chunks SET metadata = ? WHERE id = ? AND user_id = ?",
+                (dumps_json(metadata), chunk_row["id"], user_id),
+            )
+
+        connection.commit()
+
+    updated = dict(row)
+    updated["title"] = clean_title
+    return updated
+
+
+def delete_document(document_id: int, user_id: str = "anonymous") -> dict[str, Any] | None:
+    """Delete one uploaded document and its indexed chunks."""
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, source_type, title, source_ref, topic, created_at
+            FROM documents
+            WHERE id = ? AND user_id = ?
+            LIMIT 1
+            """,
+            (document_id, user_id),
+        ).fetchone()
+        if row is None:
+            return None
+
+        chunk_ids = [
+            item["id"]
+            for item in connection.execute(
+                "SELECT id FROM chunks WHERE document_id = ? AND user_id = ?",
+                (document_id, user_id),
+            ).fetchall()
+        ]
+        if chunk_ids:
+            placeholders = ",".join("?" for _ in chunk_ids)
+            connection.execute(
+                f"UPDATE flashcards SET chunk_id = NULL WHERE user_id = ? AND chunk_id IN ({placeholders})",
+                [user_id, *chunk_ids],
+            )
+
+        connection.execute("DELETE FROM chunks WHERE document_id = ? AND user_id = ?", (document_id, user_id))
+        connection.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (document_id, user_id))
+        connection.execute(
+            """
+            UPDATE learning_sessions
+            SET document_id = NULL, document_title = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND document_id = ?
+            """,
+            (user_id, document_id),
+        )
+        connection.commit()
+
+    return dict(row)
+
+
 def get_document_count(user_id: str = "anonymous") -> int:
     """Return the number of uploaded documents."""
     with get_connection() as connection:
