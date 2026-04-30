@@ -40,11 +40,11 @@ const api = axios.create({
 
 const sidebarSections = [
   { id: "dashboard", label: "Dashboard" },
-  { id: "chat", label: "Chat" },
   { id: "notes", label: "Notes" },
+  { id: "chat", label: "Ask AI" },
+  { id: "graph", label: "Knowledge Graph" },
   { id: "upload", label: "Upload" },
   { id: "study", label: "Study" },
-  { id: "graph", label: "Graph" },
 ];
 
 const railSections = [
@@ -75,6 +75,15 @@ const statusChecks = [
   { key: "ingestion_ready", label: "PDF + YouTube ingestion", ready: "Core ingestion ready", blocked: "Missing ingestion dependency" },
   { key: "embedding_model_ready", label: "Semantic retrieval", ready: "Transformer retrieval ready", blocked: "Fast hash retrieval active" },
 ];
+
+const navMeta = {
+  dashboard: { icon: "D", count: null },
+  notes: { icon: "N", count: "notes" },
+  chat: { icon: "A", count: null },
+  graph: { icon: "G", count: null },
+  upload: { icon: "U", count: null },
+  study: { icon: "S", count: null },
+};
 
 function TopicPill({ topic }) {
   return <span className="topic-pill">{topic || "General"}</span>;
@@ -214,6 +223,13 @@ export default function SecondBrainApp() {
   const [notes, setNotes] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const profile = {
+    name: "Your Name",
+    plan: "Pro workspace",
+    initials: "YN",
+  };
 
   const topicData = Object.entries(analytics.topics || {}).map(([topic, count]) => ({
     topic,
@@ -239,10 +255,20 @@ export default function SecondBrainApp() {
     }));
   const sourceCount = analytics.documents_uploaded ?? 0;
   const statCards = [
-    { key: "total_questions", label: "Questions Asked", value: analytics.total_questions ?? 0 },
-    { key: "tracked_topics", label: "Tracked Topics", value: topicData.length },
-    { key: "documents_uploaded", label: "Documents Indexed", value: analytics.documents_uploaded ?? 0 },
+    { key: "notes", label: "Total Notes", value: notes.length, delta: `${notes.length ? "+ active" : "start today"}` },
+    { key: "connections", label: "Connections", value: graph.edges?.length ?? 0, delta: graph.edges?.length ? "+ graph links" : "build graph" },
+    { key: "tracked_topics", label: "Tags", value: topicData.length, delta: topicData.length ? "organized" : "add tags" },
+    { key: "total_questions", label: "AI Queries", value: analytics.total_questions ?? 0, delta: "this month" },
   ];
+  const todayLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(new Date());
+  const filteredNotes = notes.filter((note) => {
+    const haystack = `${note.title} ${note.body} ${note.topic} ${(note.tags || []).join(" ")}`.toLowerCase();
+    return haystack.includes(searchQuery.toLowerCase().trim());
+  });
   const learningMissions = [
     {
       title: "Start guided learning",
@@ -597,21 +623,23 @@ export default function SecondBrainApp() {
           </button>
         </aside>
 
-        <aside className="glass-panel sidebar-panel" id="dashboard">
-          <div className="panel-header">
+        <aside className="glass-panel sidebar-panel">
+          <div className="brand-block">
+            <div className="brand-mark">SB</div>
             <div>
-              <p className="eyebrow">Workspace</p>
-              <h1 className="panel-title">Second Brain AI</h1>
-            </div>
-            <div className="header-actions">
-              <button className="ghost-button" onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
-                {theme === "dark" ? "Light" : "Dark"}
-              </button>
-              <button className="ghost-button" onClick={clearHistory}>
-                Clear Chat
-              </button>
+              <h1 className="panel-title">Second Brain</h1>
+              <p className="section-copy">AI-powered memory</p>
             </div>
           </div>
+
+          <label className="search-box">
+            <span>Search</span>
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search everything..."
+            />
+          </label>
 
           <nav className="section-nav">
             {sidebarSections.map((section) => (
@@ -621,7 +649,9 @@ export default function SecondBrainApp() {
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
               >
-                {section.label}
+                <span className="nav-icon">{navMeta[section.id]?.icon}</span>
+                <span>{section.label}</span>
+                {navMeta[section.id]?.count === "notes" && <small>{notes.length}</small>}
               </a>
             ))}
           </nav>
@@ -699,7 +729,7 @@ export default function SecondBrainApp() {
             ))}
           </div>
 
-          <div className="section-block" id="notes">
+          <div className="section-block compact-notes-panel">
             <div className="section-head">
               <h2>Notes</h2>
               <button className="ghost-button" onClick={saveComposerAsNote} disabled={!input.trim()}>
@@ -907,9 +937,125 @@ export default function SecondBrainApp() {
               ))}
             </div>
           </div>
+
+          <div className="profile-card">
+            <div className="profile-avatar">{profile.initials}</div>
+            <div>
+              <strong>{profile.name}</strong>
+              <p>{profile.plan} · {notes.length} notes</p>
+            </div>
+          </div>
         </aside>
 
         <main className="main-layout">
+          <section className="dashboard-shell" id="dashboard">
+            <div className="dashboard-header">
+              <div>
+                <h2 className="dashboard-title">Dashboard</h2>
+                <p>{todayLabel} · Good morning</p>
+              </div>
+              <div className="dashboard-actions">
+                <button className="ghost-button" onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
+                  {theme === "dark" ? "Light" : "Dark"}
+                </button>
+                <button className="primary-button" onClick={saveComposerAsNote} disabled={!input.trim()}>
+                  + New Note
+                </button>
+              </div>
+            </div>
+
+            <div className="dashboard-stat-grid">
+              {statCards.map((card) => (
+                <div className="dashboard-stat-card" key={card.key}>
+                  <strong>{dashboardLoading ? "..." : card.value}</strong>
+                  <span>{card.label}</span>
+                  <small>{card.delta}</small>
+                </div>
+              ))}
+            </div>
+
+            <div className="dashboard-content-grid">
+              <section className="workspace-card" id="notes">
+                <div className="workspace-card-header">
+                  <h3>Recent Notes</h3>
+                  <button className="ghost-button" onClick={() => setInput("New note idea: ")}>
+                    Capture
+                  </button>
+                </div>
+                <div className="recent-note-list">
+                  {filteredNotes.length === 0 && (
+                    <EmptyHint
+                      title={notes.length ? "No matching notes" : "No notes yet"}
+                      text={notes.length ? "Try another search term." : "Write in the composer, then save it as your first note."}
+                    />
+                  )}
+                  {filteredNotes.slice(0, 4).map((note, index) => (
+                    <button
+                      className="recent-note-card"
+                      key={note.id}
+                      onClick={() => askQuestion(`Connect this note to my knowledge base:\n${note.title}\n${note.body}`)}
+                      type="button"
+                    >
+                      <span className={`note-accent accent-${index % 4}`} />
+                      <div>
+                        <strong>{note.title}</strong>
+                        <p>{note.body || "No body yet"}</p>
+                        <div className="note-tags">
+                          {(note.tags || ["General"]).slice(0, 2).map((tag) => (
+                            <small key={tag}>{tag}</small>
+                          ))}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="workspace-card">
+                <div className="workspace-card-header">
+                  <h3>Recent Activity</h3>
+                  <span>{activity.length}</span>
+                </div>
+                <div className="timeline-list">
+                  {activity.length === 0 && (
+                    <EmptyHint
+                      title="No activity yet"
+                      text="Uploads, saved memories, notes, and AI answers will show up here."
+                    />
+                  )}
+                  {activity.slice(0, 5).map((event, index) => (
+                    <div className="timeline-item" key={event.id}>
+                      <span className={`timeline-dot accent-${index % 4}`} />
+                      <div>
+                        <strong>{event.event_type.replaceAll("_", " ")}</strong>
+                        <p>{event.metadata?.title || event.metadata?.topic || event.entity_type}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="weekly-goal">
+                  <div>
+                    <span>Weekly goal</span>
+                    <strong>{Math.min(notes.length, 15)} / 15</strong>
+                  </div>
+                  <div className="goal-track">
+                    <span style={{ width: `${Math.min((notes.length / 15) * 100, 100)}%` }} />
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <section className="workspace-card feature-strip">
+              <div>
+                <h3>Features</h3>
+                <p>Memory, notes, uploads, graph, strict source answers, and study recommendations now live in one workspace.</p>
+              </div>
+              <button className="secondary-button" onClick={clearHistory}>
+                Clear Chat
+              </button>
+            </section>
+          </section>
+
           <section className="glass-panel chat-panel" id="chat">
             <div className="chat-hero">
               <div className="chat-hero-copy">
