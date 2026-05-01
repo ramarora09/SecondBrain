@@ -271,6 +271,7 @@ function SecondBrainAppContent() {
   const [activity, setActivity] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [coldStartNotice, setColdStartNotice] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const profile = {
     name: "Your Name",
@@ -345,6 +346,11 @@ function SecondBrainAppContent() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    document.body.classList.toggle("mobile-sidebar-open", mobileSidebarOpen);
+    return () => document.body.classList.remove("mobile-sidebar-open");
+  }, [mobileSidebarOpen]);
 
   const withColdStartNotice = async (requestPromise) => {
     const timer = window.setTimeout(() => setColdStartNotice(true), 3000);
@@ -718,6 +724,22 @@ function SecondBrainAppContent() {
 
   return (
     <div className="app-shell app-root">
+      <button
+        className="mobile-menu-button"
+        onClick={() => setMobileSidebarOpen(true)}
+        type="button"
+        aria-label="Open workspace sidebar"
+      >
+        Menu
+      </button>
+      {mobileSidebarOpen && (
+        <button
+          className="mobile-sidebar-backdrop"
+          onClick={() => setMobileSidebarOpen(false)}
+          type="button"
+          aria-label="Close workspace sidebar"
+        />
+      )}
       <div className="app-layout">
         <aside className="rail-panel">
           <div className="rail-brand">SB</div>
@@ -740,7 +762,7 @@ function SecondBrainAppContent() {
           </button>
         </aside>
 
-        <aside className="glass-panel sidebar-panel">
+        <aside className={`glass-panel sidebar-panel ${mobileSidebarOpen ? "open" : ""}`}>
           <div className="brand-block">
             <div className="brand-mark">SB</div>
             <div>
@@ -764,7 +786,10 @@ function SecondBrainAppContent() {
                 className={`nav-link ${activeSection === section.id ? "active" : ""}`}
                 href={`#${section.id}`}
                 key={section.id}
-                onClick={() => setActiveSection(section.id)}
+                onClick={() => {
+                  setActiveSection(section.id);
+                  setMobileSidebarOpen(false);
+                }}
               >
                 <span className="nav-icon">{navMeta[section.id]?.icon}</span>
                 <span>{section.label}</span>
