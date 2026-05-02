@@ -1836,7 +1836,8 @@ body {
 }
 
 .mobile-menu-button,
-.mobile-sidebar-backdrop {
+.mobile-sidebar-backdrop,
+.mobile-bottom-nav {
   display: none;
 }
 
@@ -1899,6 +1900,58 @@ body {
     font-weight: 700;
   }
 
+  .mobile-bottom-nav {
+    position: fixed;
+    z-index: 55;
+    left: 0.65rem;
+    right: 0.65rem;
+    bottom: max(0.65rem, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.25rem;
+    padding: 0.4rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+  }
+
+  .mobile-tab {
+    min-width: 0;
+    min-height: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
+    border-radius: 14px;
+    color: var(--text-secondary);
+    text-decoration: none;
+  }
+
+  .mobile-tab span {
+    color: var(--text-primary);
+    font-weight: 800;
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+
+  .mobile-tab small {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.62rem;
+    line-height: 1.1;
+  }
+
+  .mobile-tab.active {
+    background: linear-gradient(135deg, var(--accent-soft), rgba(137, 211, 86, 0.12));
+    color: var(--text-primary);
+  }
+
   .mobile-sidebar-backdrop {
     display: block;
     position: fixed;
@@ -1932,7 +1985,7 @@ body {
   }
 
   .dashboard-shell {
-    padding: 4.25rem 0.85rem 1rem;
+    padding: 4.25rem 0.85rem 6rem;
   }
 
   .dashboard-header {
@@ -1961,6 +2014,15 @@ body {
     padding: 1rem 0;
   }
 
+  .dashboard-content-grid,
+  .bottom-grid {
+    gap: 1rem;
+  }
+
+  .workspace-card {
+    border-radius: 16px;
+  }
+
   .dashboard-stat-card {
     min-height: 112px;
     padding: 0.85rem;
@@ -1984,6 +2046,7 @@ body {
 
   .chat-panel {
     margin: 0 0 1rem;
+    border-radius: 16px;
   }
 
   .chat-feed {
@@ -1997,6 +2060,16 @@ body {
 
   .composer {
     gap: 0.7rem;
+    position: sticky;
+    bottom: 5.15rem;
+    z-index: 20;
+    padding: 0.65rem;
+    margin: 0 -0.65rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
   }
 
   .composer-input {
@@ -2017,11 +2090,24 @@ body {
   .document-actions {
     flex-direction: column;
   }
+
+  .glass-panel {
+    padding: 1rem;
+  }
+
+  .brand-block {
+    padding-top: 0.5rem;
+  }
+
+  .section-block {
+    margin-top: 1rem;
+    padding-top: 1rem;
+  }
 }
 
 @media (max-width: 480px) {
   .dashboard-stat-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dashboard-actions,
@@ -2041,6 +2127,36 @@ body {
   .workspace-card-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .dashboard-stat-card {
+    min-height: 96px;
+  }
+
+  .dashboard-stat-card strong {
+    font-size: 1.65rem;
+  }
+
+  .dashboard-stat-card span,
+  .dashboard-stat-card small {
+    font-size: 0.82rem;
+    text-align: center;
+  }
+
+  .recent-note-list,
+  .timeline-list {
+    gap: 0.75rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .feature-strip,
+  .empty-state {
+    padding: 1rem;
+  }
+
+  .chart-card {
+    min-height: 220px;
   }
 
   .recent-note-card {

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import { Component, useEffect, useState } from "react";
 import axios from "axios";
 import {
   Bar,
@@ -20,13 +20,21 @@ const apiKey = (import.meta.env.VITE_API_KEY || "").trim();
 
 function getSessionId() {
   const key = "second_brain_session_id";
-  const existing = window.localStorage.getItem(key);
-  if (existing) return existing;
+  try {
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+  } catch {
+    return `sb-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
 
   const generated =
     window.crypto?.randomUUID?.() ||
     `sb-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  window.localStorage.setItem(key, generated);
+  try {
+    window.localStorage.setItem(key, generated);
+  } catch {
+    // Storage can be unavailable in some mobile/private browsers.
+  }
   return generated;
 }
 
@@ -40,34 +48,37 @@ const api = axios.create({
   },
 });
 
-function ErrorBoundary({ children }) {
-  const [hasError, setHasError] = useState(false);
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
-  useEffect(() => {
-    const handleError = () => setHasError(true);
-    window.addEventListener("error", handleError);
-    window.addEventListener("unhandledrejection", handleError);
-    return () => {
-      window.removeEventListener("error", handleError);
-      window.removeEventListener("unhandledrejection", handleError);
-    };
-  }, []);
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
 
-  if (hasError) {
+  componentDidCatch(error) {
+    console.error("UI recovered from an error:", error);
+  }
+
+  render() {
+    if (!this.state.hasError) {
+      return this.props.children;
+    }
+
     return (
       <div className="app-shell app-root error-boundary-screen">
         <div className="workspace-card error-boundary-card">
-          <h1>Something went wrong</h1>
-          <p>The workspace hit a UI error. Refresh the page and try again.</p>
-          <button className="primary-button" onClick={() => window.location.reload()}>
-            Refresh
+          <h1>Workspace recovered</h1>
+          <p>A screen section failed to render. Continue without reloading the whole app.</p>
+          <button className="primary-button" onClick={() => this.setState({ hasError: false })}>
+            Continue
           </button>
         </div>
       </div>
     );
   }
-
-  return children;
 }
 
 const sidebarSections = [
@@ -459,7 +470,7 @@ function SecondBrainAppContent() {
   }, []);
 
   const askQuestion = async (questionOverride) => {
-    const currentQuestion = (questionOverride ?? input).trim();
+    const currentQuestion = typeof questionOverride === "string" ? questionOverride.trim() : input.trim();
     if (!currentQuestion) return;
 
     setMessages((prev) => [...prev, { role: "user", text: currentQuestion }]);
@@ -740,6 +751,22 @@ function SecondBrainAppContent() {
           aria-label="Close workspace sidebar"
         />
       )}
+      <nav className="mobile-bottom-nav" aria-label="Mobile workspace navigation">
+        {railSections.map((section) => (
+          <a
+            className={`mobile-tab ${activeSection === section.id ? "active" : ""}`}
+            href={`#${section.id}`}
+            key={section.id}
+            onClick={() => {
+              setActiveSection(section.id);
+              setMobileSidebarOpen(false);
+            }}
+          >
+            <span>{section.short}</span>
+            <small>{section.label}</small>
+          </a>
+        ))}
+      </nav>
       <div className="app-layout">
         <aside className="rail-panel">
           <div className="rail-brand">SB</div>
