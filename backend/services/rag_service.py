@@ -102,7 +102,24 @@ def _select_relevant_results(
 
     generic_source_request = any(
         phrase in question.lower()
-        for phrase in ["summarize", "summary", "revise", "revision", "start", "teach", "from pdf", "from the pdf"]
+        for phrase in [
+            "summarize",
+            "summary",
+            "revise",
+            "revision",
+            "start",
+            "teach",
+            "from pdf",
+            "from the pdf",
+            "this pdf",
+            "entire pdf",
+            "whole pdf",
+            "complete pdf",
+            "every topic",
+            "all topics",
+            "covered in this pdf",
+            "covered in the pdf",
+        ]
     )
     if require_source_match and not generic_source_request:
         filtered = [
@@ -131,7 +148,7 @@ def detect_intent(question: str) -> str:
         return "next"
     if any(phrase in q for phrase in ["continue", "go on", "carry on", "send me more", "tell me next", "move ahead"]):
         return "next"
-    if "teach" in q or "start" in q:
+    if "teach" in q or "start" in q or _is_document_overview_request(question):
         return "teaching"
     if "summarize" in q:
         return "summary"
@@ -477,6 +494,132 @@ def _is_generic_start_prompt(question: str) -> bool:
     }
 
 
+def _is_document_overview_request(question: str) -> bool:
+    """Detect broad requests that should use the document itself as context."""
+    normalized = " ".join(question.lower().split())
+    source_terms = [
+        "pdf",
+        "document",
+        "uploaded source",
+        "uploaded notes",
+        "this file",
+        "source",
+    ]
+    overview_terms = [
+        "every topic",
+        "all topics",
+        "each topic",
+        "covered in",
+        "complete",
+        "entire",
+        "whole",
+        "full",
+        "detail",
+        "detailed",
+        "explain",
+        "summary",
+        "summarize",
+        "notes",
+    ]
+
+    has_source_term = any(term in normalized for term in source_terms)
+    has_overview_term = any(term in normalized for term in overview_terms)
+    return has_source_term and has_overview_term
+
+
+def _document_chunks_as_results(document_id: int, user_id: str, limit: int = 12) -> list[dict]:
+    """Convert ordered document chunks into retrieval-like records."""
+    chunks = get_document_chunks(document_id, limit=limit, user_id=user_id)
+    results: list[dict] = []
+    for index, chunk in enumerate(chunks):
+        text = str(chunk.get("chunk_text") or "").strip()
+        if not text:
+            continue
+
+        score = max(1.0 - (index * 0.02), 0.5)
+        results.append(
+            {
+                "chunk_id": chunk["id"],
+                "document_id": document_id,
+                "text": text,
+                "topic": chunk.get("topic") or "General",
+                "score": score,
+                "lexical_score": 1.0,
+                "combined_score": score,
+                "metadata": {
+                    "title": chunk.get("title") or "Uploaded source",
+                    "source_type": chunk.get("source_type") or "source",
+                    "chunk_index": index,
+                },
+            }
+        )
+
+    return results
+
+
+def _answer_document_overview(
+    *,
+    question: str,
+    active_document: dict,
+    language: str,
+    user_id: str,
+) -> dict | None:
+    """Answer broad document requests without relying on narrow semantic search."""
+    document_id = active_document.get("id")
+    if document_id is None:
+        return None
+
+    title, document_text = _document_text_for_teaching(document_id, user_id=user_id)
+    if not document_text:
+        return None
+
+    chunk_results = _document_chunks_as_results(document_id, user_id=user_id, limit=12)
+    context_sections = _format_context(chunk_results)
+    if not context_sections:
+        context_sections = [
+            (
+                f"Source: {title or active_document.get('title') or 'Uploaded source'}\n"
+                f"Type: {active_document.get('source_type', 'source')}\n"
+                f"Topic: {active_document.get('topic', 'General')}\n"
+                "Chunk: 0\n"
+                "Similarity: 1.000\n"
+                f"Content: {' '.join(document_text[:5000].split())}"
+            )
+        ]
+
+    overview_question = (
+        "Explain the main topics covered in this uploaded document in detail. "
+        "Use only the provided document context, organize the answer topic by topic, "
+        "and mention when the available excerpt does not include enough detail.\n\n"
+        f"User request: {question}"
+    )
+    answer = answer_question(
+        overview_question,
+        context_sections[:10],
+        _memory_context_lines(limit=3, user_id=user_id),
+        language=language,
+    )
+
+    return {
+        "question": question,
+        "answer": answer,
+        "topic": "document_overview",
+        "language": language,
+        "sources": [
+            {
+                "chunk_id": item["chunk_id"],
+                "score": round(item["score"], 4),
+                "metadata": item["metadata"],
+            }
+            for item in chunk_results[:5]
+        ],
+        "has_context": True,
+        "document_id": document_id,
+        "document_title": active_document.get("title"),
+        "strict": False,
+    }
+
+
 def _wants_general_answer(question: str) -> bool:
     normalized = question.lower()
     return any(
@@ -605,6 +748,26 @@ def query_knowledge_base(
             "document_id": document_id,
             "document_title": active_document.get("title") if active_document else None,
         }
+
+    if _is_document_overview_request(question):
+        overview_document = active_document or get_latest_document(user_id=user_id)
+        if overview_document is not None:
+            overview_answer = _answer_document_overview(
+                question=question,
+                active_document=overview_document,
+                language=language,
+                user_id=user_id,
+            )
+            if overview_answer is not None:
+                add_to_memory(question, overview_answer["answer"], "document_overview", user_id=user_id)
+                record_activity(
+                    user_id=user_id,
+                    event_type="question_answered",
+                    entity_type="chat",
+                    metadata={"topic": "document_overview", "has_context": True, "strict": strict},
+                )
+                overview_answer["strict"] = strict
+                return overview_answer
 
     if intent == "next":
         next_topic = get_next_topic(user_id)
