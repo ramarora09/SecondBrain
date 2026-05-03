@@ -5,6 +5,7 @@ python-dotenv
 groq
 sentence-transformers
 numpy
+PyMuPDF
 pypdf
 youtube-transcript-api
 Pillow

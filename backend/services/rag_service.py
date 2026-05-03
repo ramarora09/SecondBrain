@@ -557,6 +557,34 @@ def _document_chunks_as_results(document_id: int, user_id: str, limit: int = 12)
     return results
 
 
+def _active_document_fallback_results(
+    *,
+    active_document: dict | None,
+    selected_results: list[dict],
+    question: str,
+    user_id: str,
+) -> list[dict]:
+    """Use stored document chunks when vector search is too weak for the active source."""
+    if active_document is None:
+        return selected_results
+
+    if _is_document_overview_request(question) or detect_intent(question) in {"summary", "revision", "teaching"}:
+        needs_fallback = True
+    else:
+        best_combined = max((item.get("combined_score", item.get("score", 0.0)) for item in selected_results), default=0.0)
+        needs_fallback = not selected_results or best_combined < 0.24
+
+    if not needs_fallback:
+        return selected_results
+
+    document_id = active_document.get("id")
+    if document_id is None:
+        return selected_results
+
+    fallback_results = _document_chunks_as_results(document_id, user_id=user_id, limit=10)
+    return fallback_results or selected_results
+
+
 def _answer_document_overview(
     *,
     question: str,
@@ -924,6 +952,12 @@ def query_knowledge_base(
         question=question,
         limit=6,
         require_source_match=active_document is not None,
+    )
+    selected_results = _active_document_fallback_results(
+        active_document=active_document,
+        selected_results=selected_results,
+        question=question,
+        user_id=user_id,
     )
     context_sections = _format_context(selected_results)
     memory_lines = _memory_context_lines(limit=3, user_id=user_id)
