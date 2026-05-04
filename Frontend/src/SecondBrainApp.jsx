@@ -710,7 +710,7 @@ function SecondBrainAppContent() {
       const response = await withColdStartNotice(api.post("/study/flashcards", { limit: 5, user_id: sessionId }));
       const payload = unwrapPayload(response.data);
       setFlashcards(payload.flashcards || response.data.flashcards || []);
-      setStatusMessage("Generated new flashcards. They are scheduled for review instead of becoming due immediately.");
+      setStatusMessage("Generated new flashcards. They are ready for review now.");
       await loadDashboard();
     } catch (error) {
       setStatusMessage(error.response?.data?.detail || "Could not generate flashcards.");

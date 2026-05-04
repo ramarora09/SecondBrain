@@ -14,8 +14,8 @@ def _utcnow() -> datetime:
 
 
 def _initial_review_time() -> str:
-    """Schedule new flashcards for the next day instead of immediately."""
-    return (_utcnow() + timedelta(days=1)).isoformat()
+    """Make newly generated flashcards available for immediate review."""
+    return _utcnow().isoformat()
 
 
 def generate_flashcards(limit: int = 5, topic: str | None = None, user_id: str = "anonymous") -> list[dict]:

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import os
-
 from services.embeddings import create_embeddings
 from services.activity_service import record_activity
 from services.graph_service import upsert_graph_from_text
-from services.ocr_service import extract_text_from_image
+from services.ocr_service import extract_text_from_image, extract_text_with_groq_vision
 from services.pdf_processor import extract_text
 from services.topic_classifier import detect_topic
 from services.vector_store import store_document
@@ -13,32 +11,29 @@ from services.youtube_ingestion import extract_transcript
 
 
 def extract_text_with_ocr(file_bytes: bytes) -> str:
-    """Optional OCR fallback for scanned PDFs."""
+    """OCR fallback for scanned PDFs using PyMuPDF page rendering."""
     try:
-        from io import BytesIO
-        from pdf2image import convert_from_bytes
+        import os
+
+        import fitz
     except Exception:
         return ""
 
     full_text: list[str] = []
     try:
-        poppler_path = os.getenv("POPPLER_PATH") or None
-        max_pages = int(os.getenv("PDF_OCR_MAX_PAGES", "8"))
+        pdf = fitz.open(stream=file_bytes, filetype="pdf")
+        max_pages = min(int(os.getenv("PDF_OCR_MAX_PAGES", "30")), pdf.page_count)
         max_chars = int(os.getenv("PDF_OCR_MAX_CHARS", "50000"))
-        images = convert_from_bytes(
-            file_bytes,
-            poppler_path=poppler_path,
-            first_page=1,
-            last_page=max_pages,
-        )
-        for image in images:
-            buffer = BytesIO()
-            image.save(buffer, format="PNG")
-            text, warning = extract_text_from_image(buffer.getvalue())
-            if warning and not text:
+
+        for index in range(max_pages):
+            page = pdf[index]
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            image_bytes = pixmap.tobytes("png")
+            text, warning = extract_text_with_groq_vision(image_bytes, "image/png")
+            if warning and not text.strip():
                 continue
             if text.strip():
-                full_text.append(text.strip())
+                full_text.append(f"Page {index + 1}:\n{text.strip()}")
             if sum(len(part) for part in full_text) >= max_chars:
                 break
     except Exception:
@@ -56,7 +51,7 @@ def ingest_pdf(file_bytes: bytes, filename: str, user_id: str = "anonymous") -> 
 
     if not text.strip():
         raise ValueError(
-            "No readable text found in this PDF. If it is scanned, install Poppler (pdfinfo on PATH), pdf2image, and Tesseract OCR."
+            "No readable text found in this PDF. It appears to be scanned, and Groq vision OCR could not extract text from it."
         )
 
     chunks, embeddings = create_embeddings(text)
