@@ -120,6 +120,7 @@ const statusChecks = [
 ];
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const UPLOAD_TIMEOUT_MS = 300000;
 const PDF_TYPES = new Set(["application/pdf"]);
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 
@@ -615,7 +616,7 @@ function SecondBrainAppContent() {
     try {
       const response = await withColdStartNotice(api.post("/upload-pdf", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000,
+        timeout: UPLOAD_TIMEOUT_MS,
       }));
       const payload = unwrapPayload(response.data);
       setStatusMessage(`Indexed PDF: ${payload.title || response.data.title || "uploaded document"}`);
@@ -648,7 +649,7 @@ function SecondBrainAppContent() {
           title: youtubeTranscript.trim() ? `YouTube notes: ${youtubeUrl.trim()}` : undefined,
           user_id: sessionId,
         },
-        { timeout: 120000 },
+        { timeout: UPLOAD_TIMEOUT_MS },
       ));
       const payload = unwrapPayload(response.data);
       setStatusMessage(`Indexed YouTube source: ${payload.title || response.data.title || youtubeUrl.trim()}`);
@@ -680,7 +681,7 @@ function SecondBrainAppContent() {
     try {
       const response = await withColdStartNotice(api.post("/upload-image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000,
+        timeout: UPLOAD_TIMEOUT_MS,
       }));
       const payload = unwrapPayload(response.data);
       if (payload.warning || response.data.warning) {

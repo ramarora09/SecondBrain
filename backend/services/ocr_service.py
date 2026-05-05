@@ -20,6 +20,22 @@ except Exception:
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 
+def _prepare_image_for_vision(file_bytes: bytes) -> tuple[bytes, str]:
+    """Resize and compress images before sending them to vision OCR."""
+    try:
+        image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+    except Exception:
+        return file_bytes, "image/png"
+
+    max_side = 1600
+    if max(image.size) > max_side:
+        image.thumbnail((max_side, max_side))
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=72, optimize=True)
+    return buffer.getvalue(), "image/jpeg"
+
+
 def extract_text_with_groq_vision(file_bytes: bytes, mime_type: str = "image/png") -> tuple[str, str | None]:
     """Extract text from an image using the already configured Groq client."""
     client = get_client()
@@ -27,7 +43,8 @@ def extract_text_with_groq_vision(file_bytes: bytes, mime_type: str = "image/png
         return "", "Groq API key is not configured for vision OCR."
 
     try:
-        encoded = base64.b64encode(file_bytes).decode("ascii")
+        prepared_bytes, prepared_mime_type = _prepare_image_for_vision(file_bytes)
+        encoded = base64.b64encode(prepared_bytes).decode("ascii")
         response = client.chat.completions.create(
             model=VISION_MODEL,
             messages=[
@@ -40,7 +57,7 @@ def extract_text_with_groq_vision(file_bytes: bytes, mime_type: str = "image/png
                         },
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:{mime_type};base64,{encoded}"},
+                            "image_url": {"url": f"data:{prepared_mime_type};base64,{encoded}"},
                         },
                     ],
                 }

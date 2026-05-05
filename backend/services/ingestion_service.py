@@ -22,19 +22,23 @@ def extract_text_with_ocr(file_bytes: bytes) -> str:
     full_text: list[str] = []
     try:
         pdf = fitz.open(stream=file_bytes, filetype="pdf")
-        max_pages = min(int(os.getenv("PDF_OCR_MAX_PAGES", "30")), pdf.page_count)
-        max_chars = int(os.getenv("PDF_OCR_MAX_CHARS", "50000"))
+        max_pages = min(int(os.getenv("PDF_OCR_MAX_PAGES", "12")), pdf.page_count)
+        max_chars = int(os.getenv("PDF_OCR_MAX_CHARS", "25000"))
+        enough_chars = int(os.getenv("PDF_OCR_ENOUGH_CHARS", "12000"))
+        total_chars = 0
 
         for index in range(max_pages):
             page = pdf[index]
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
             image_bytes = pixmap.tobytes("png")
             text, warning = extract_text_with_groq_vision(image_bytes, "image/png")
             if warning and not text.strip():
                 continue
             if text.strip():
-                full_text.append(f"Page {index + 1}:\n{text.strip()}")
-            if sum(len(part) for part in full_text) >= max_chars:
+                page_text = f"Page {index + 1}:\n{text.strip()}"
+                full_text.append(page_text)
+                total_chars += len(page_text)
+            if total_chars >= max_chars or total_chars >= enough_chars:
                 break
     except Exception:
         return ""
@@ -58,7 +62,7 @@ def ingest_pdf(file_bytes: bytes, filename: str, user_id: str = "anonymous") -> 
     if not chunks:
         raise ValueError("Could not create embeddings from the PDF.")
 
-    topic = detect_topic(text[:2000])
+    topic = detect_topic(text[:2000], allow_llm_fallback=False)
     document_id = store_document(
         source_type="pdf",
         user_id=user_id,
@@ -111,7 +115,7 @@ def ingest_youtube_text(
     if not chunks:
         raise ValueError("Could not create embeddings from the YouTube transcript.")
 
-    topic = detect_topic(text[:2000])
+    topic = detect_topic(text[:2000], allow_llm_fallback=False)
     resolved_title = title or url
     document_id = store_document(
         source_type="youtube",
@@ -154,7 +158,7 @@ def ingest_image(file_bytes: bytes, filename: str, user_id: str = "anonymous") -
     if not chunks:
         raise ValueError("Could not create embeddings from the image text.")
 
-    topic = detect_topic(text[:2000])
+    topic = detect_topic(text[:2000], allow_llm_fallback=False)
     document_id = store_document(
         source_type="image",
         user_id=user_id,

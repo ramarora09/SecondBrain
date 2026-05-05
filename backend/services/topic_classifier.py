@@ -16,7 +16,7 @@ TOPIC_RULES = {
 }
 
 
-def detect_topic(text: str) -> str:
+def detect_topic(text: str, allow_llm_fallback: bool = True) -> str:
     """Detect a best-effort topic label from text."""
     normalized = text.lower()
     best_topic = "General"
@@ -30,6 +30,9 @@ def detect_topic(text: str) -> str:
 
     if best_score > 0:
         return best_topic
+
+    if not allow_llm_fallback:
+        return "General"
 
     llm_label = classify_topic_with_llm(text, list(TOPIC_RULES.keys()))
     return llm_label or "General"
