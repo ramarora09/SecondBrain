@@ -55,8 +55,8 @@ def _extract_with_pymupdf(file_bytes: bytes, max_pages: int, max_chars: int) -> 
 
 
 def extract_text(file_bytes):
-    max_pages = int(os.getenv("PDF_MAX_PAGES", "500"))
-    max_chars = int(os.getenv("PDF_MAX_CHARS", "500000"))
+    max_pages = int(os.getenv("PDF_MAX_PAGES", "180"))
+    max_chars = int(os.getenv("PDF_MAX_CHARS", "220000"))
 
     try:
         text = _extract_with_pypdf(file_bytes, max_pages, max_chars)

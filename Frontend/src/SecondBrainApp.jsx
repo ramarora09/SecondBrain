@@ -1,4 +1,4 @@
-﻿import { Component, useEffect, useState } from "react";
+﻿import { Component, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
   Bar,
@@ -284,6 +284,8 @@ function SecondBrainAppContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [coldStartNotice, setColdStartNotice] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const chatFeedRef = useRef(null);
+  const chatSectionRef = useRef(null);
 
   const profile = {
     name: "Your Name",
@@ -470,21 +472,35 @@ function SecondBrainAppContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const feed = chatFeedRef.current;
+    if (!feed) return;
+    feed.scrollTo({ top: feed.scrollHeight, behavior: "smooth" });
+  }, [messages, questionLoading]);
+
+  const openChat = () => {
+    window.requestAnimationFrame(() => {
+      chatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   const askQuestion = async (questionOverride) => {
     const currentQuestion = typeof questionOverride === "string" ? questionOverride.trim() : input.trim();
     if (!currentQuestion) return;
+    const fallbackDocument = currentDocument || recentDocuments[0] || null;
 
     setMessages((prev) => [...prev, { role: "user", text: currentQuestion }]);
     setInput("");
     setQuestionLoading(true);
     setStatusMessage("");
+    openChat();
 
     try {
       const response = await withColdStartNotice(api.post("/ask", {
         question: currentQuestion,
         source: "all",
         language,
-        document_id: currentDocument?.id ?? null,
+        document_id: fallbackDocument?.id ?? null,
         user_id: sessionId,
         strict: strictMode,
       }));
@@ -603,15 +619,16 @@ function SecondBrainAppContent() {
     askQuestion(recommendation.action_prompt);
   };
 
-  const uploadPdf = async () => {
-    if (!pdfFile) return;
-    if (!validateUploadFile(pdfFile, PDF_TYPES, "PDF")) return;
+  const uploadPdf = async (selectedFile = pdfFile) => {
+    if (!selectedFile) return;
+    if (!validateUploadFile(selectedFile, PDF_TYPES, "PDF")) return;
 
     const formData = new FormData();
-    formData.append("file", pdfFile);
+    formData.append("file", selectedFile);
     setUploadLoading(true);
-    setUploadStatus("Indexing PDF...");
+    setUploadStatus(`Uploading ${selectedFile.name}...`);
     setStatusMessage("");
+    openChat();
 
     try {
       const response = await withColdStartNotice(api.post("/upload-pdf", formData, {
@@ -619,8 +636,19 @@ function SecondBrainAppContent() {
         timeout: UPLOAD_TIMEOUT_MS,
       }));
       const payload = unwrapPayload(response.data);
-      setStatusMessage(`Indexed PDF: ${payload.title || response.data.title || "uploaded document"}`);
-      setCurrentDocument({ id: payload.document_id, title: payload.title || response.data.title || "uploaded document" });
+      const title = payload.title || response.data.title || selectedFile.name || "uploaded document";
+      setStatusMessage(`Indexed PDF: ${title}`);
+      setCurrentDocument({ id: payload.document_id, title });
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: `PDF indexed: ${title}\n\nYou can ask questions from this source now. Try "summarize this PDF" or "teach me the first topic".`,
+          topic: "upload",
+          documentId: payload.document_id,
+          documentTitle: title,
+        },
+      ]);
       setPdfFile(null);
       setUploadLoading(false);
       setUploadStatus("Refreshing dashboard...");
@@ -639,6 +667,7 @@ function SecondBrainAppContent() {
     setUploadLoading(true);
     setUploadStatus("Indexing YouTube...");
     setStatusMessage("");
+    openChat();
 
     try {
       const response = await withColdStartNotice(api.post(
@@ -652,8 +681,19 @@ function SecondBrainAppContent() {
         { timeout: UPLOAD_TIMEOUT_MS },
       ));
       const payload = unwrapPayload(response.data);
-      setStatusMessage(`Indexed YouTube source: ${payload.title || response.data.title || youtubeUrl.trim()}`);
-      setCurrentDocument({ id: payload.document_id, title: payload.title || response.data.title || youtubeUrl.trim() });
+      const title = payload.title || response.data.title || youtubeUrl.trim();
+      setStatusMessage(`Indexed YouTube source: ${title}`);
+      setCurrentDocument({ id: payload.document_id, title });
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: `YouTube source indexed: ${title}\n\nAsk for a summary, key ideas, or a study flow from this source.`,
+          topic: "upload",
+          documentId: payload.document_id,
+          documentTitle: title,
+        },
+      ]);
       setYoutubeUrl("");
       setYoutubeTranscript("");
       setUploadLoading(false);
@@ -668,15 +708,16 @@ function SecondBrainAppContent() {
     }
   };
 
-  const uploadImage = async () => {
-    if (!imageFile) return;
-    if (!validateUploadFile(imageFile, IMAGE_TYPES, "Image")) return;
+  const uploadImage = async (selectedFile = imageFile) => {
+    if (!selectedFile) return;
+    if (!validateUploadFile(selectedFile, IMAGE_TYPES, "Image")) return;
 
     const formData = new FormData();
-    formData.append("file", imageFile);
+    formData.append("file", selectedFile);
     setUploadLoading(true);
-    setUploadStatus("Running OCR...");
+    setUploadStatus(`Reading ${selectedFile.name}...`);
     setStatusMessage("");
+    openChat();
 
     try {
       const response = await withColdStartNotice(api.post("/upload-image", formData, {
@@ -693,7 +734,18 @@ function SecondBrainAppContent() {
       } else {
         setStatusMessage("Image processed, but no readable text was found.");
       }
-      setCurrentDocument({ id: payload.document_id, title: payload.title || response.data.title || "uploaded image" });
+      const title = payload.title || response.data.title || selectedFile.name || "uploaded image";
+      setCurrentDocument({ id: payload.document_id, title });
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: `Image indexed: ${title}\n\nOCR text is ready. Ask me to explain, summarize, or turn it into revision notes.`,
+          topic: "upload",
+          documentId: payload.document_id,
+          documentTitle: title,
+        },
+      ]);
       setImageFile(null);
       setUploadLoading(false);
       setUploadStatus("Refreshing dashboard...");
@@ -969,13 +1021,17 @@ function SecondBrainAppContent() {
                 accept="application/pdf"
                 onChange={(event) => {
                   const file = event.target.files?.[0] || null;
-                  setPdfFile(file && validateUploadFile(file, PDF_TYPES, "PDF") ? file : null);
+                  const validFile = file && validateUploadFile(file, PDF_TYPES, "PDF") ? file : null;
+                  setPdfFile(validFile);
+                  if (validFile) {
+                    void uploadPdf(validFile);
+                    event.target.value = "";
+                  }
                 }}
+                disabled={uploadLoading}
               />
             </label>
-            <button className="primary-button" onClick={uploadPdf} disabled={!pdfFile || uploadLoading}>
-              Index PDF
-            </button>
+            {pdfFile && uploadLoading && <p className="status-text">Upload started automatically. The chat will stay focused while indexing finishes.</p>}
 
             <label className="upload-field">
               <span>Upload Image for OCR</span>
@@ -984,13 +1040,17 @@ function SecondBrainAppContent() {
                 accept="image/*"
                 onChange={(event) => {
                   const file = event.target.files?.[0] || null;
-                  setImageFile(file && validateUploadFile(file, IMAGE_TYPES, "Image") ? file : null);
+                  const validFile = file && validateUploadFile(file, IMAGE_TYPES, "Image") ? file : null;
+                  setImageFile(validFile);
+                  if (validFile) {
+                    void uploadImage(validFile);
+                    event.target.value = "";
+                  }
                 }}
+                disabled={uploadLoading}
               />
             </label>
-            <button className="secondary-button" onClick={uploadImage} disabled={!imageFile || uploadLoading}>
-              Extract Text
-            </button>
+            {imageFile && uploadLoading && <p className="status-text">OCR started automatically. You can stay in the chat while it works.</p>}
 
             <label className="upload-field">
               <span>YouTube URL</span>
@@ -1268,7 +1328,7 @@ function SecondBrainAppContent() {
             </section>
           </section>
 
-          <section className="glass-panel chat-panel" id="chat">
+          <section className="glass-panel chat-panel" id="chat" ref={chatSectionRef}>
             <div className="chat-hero">
               <div className="chat-hero-copy">
                 <p className="eyebrow">AI Knowledge Engine</p>
@@ -1319,7 +1379,7 @@ function SecondBrainAppContent() {
               ))}
             </div>
 
-            <div className="chat-feed">
+            <div className="chat-feed" ref={chatFeedRef}>
               {messages.length === 0 && (
                 <div className="empty-state">
                   <p className="empty-title">Your knowledge workspace is ready.</p>

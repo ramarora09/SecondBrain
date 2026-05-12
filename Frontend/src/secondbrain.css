@@ -2170,3 +2170,138 @@ body {
     overflow-wrap: anywhere;
   }
 }
+
+/* Product-focused workspace refinements */
+.chat-panel {
+  order: -1;
+}
+
+.dashboard-shell {
+  order: 0;
+}
+
+.bottom-grid {
+  order: 1;
+  margin: 0 2.35rem 1.75rem;
+}
+
+.chat-hero {
+  align-items: center;
+  padding-bottom: 0.9rem;
+}
+
+.chat-hero-copy .eyebrow,
+.chat-hero-copy .section-copy,
+.value-grid {
+  display: none;
+}
+
+.chat-hero-copy {
+  max-width: none;
+}
+
+.panel-title {
+  font-size: clamp(1.28rem, 1.6vw, 1.65rem);
+}
+
+.chat-feed {
+  min-height: 52vh;
+  max-height: 58vh;
+  scroll-behavior: smooth;
+}
+
+.composer {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--panel-border);
+}
+
+.upload-field {
+  margin-bottom: 0.65rem;
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.upload-field input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--text-primary);
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+}
+
+.section-block#upload .section-head span {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-card,
+.dashboard-stat-card,
+.message-card,
+.upload-field,
+.document-item,
+.mission-card,
+.chart-card,
+.flashcard {
+  border-radius: 10px;
+}
+
+.dashboard-shell {
+  padding-top: 1rem;
+}
+
+.dashboard-header {
+  min-height: 82px;
+}
+
+.dashboard-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.9rem;
+  padding: 1rem 0;
+}
+
+.dashboard-stat-card {
+  min-height: 108px;
+}
+
+.dashboard-stat-card strong {
+  font-size: clamp(1.6rem, 2.4vw, 2.15rem);
+}
+
+.feature-strip {
+  display: none;
+}
+
+@media (min-width: 1180px) {
+  .app-layout {
+    grid-template-columns: 80px 320px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1024px) {
+  .bottom-grid {
+    margin: 0 0 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .chat-panel {
+    margin: 4.25rem 0.85rem 1rem;
+  }
+
+  .chat-feed {
+    min-height: 48vh;
+    max-height: none;
+  }
+
+  .chat-hero-status {
+    display: none;
+  }
+
+  .dashboard-shell {
+    padding-top: 0;
+  }
+}

@@ -571,8 +571,7 @@ def _active_document_fallback_results(
     if _is_document_overview_request(question) or detect_intent(question) in {"summary", "revision", "teaching"}:
         needs_fallback = True
     else:
-        best_combined = max((item.get("combined_score", item.get("score", 0.0)) for item in selected_results), default=0.0)
-        needs_fallback = not selected_results or best_combined < 0.24
+        needs_fallback = False
 
     if not needs_fallback:
         return selected_results

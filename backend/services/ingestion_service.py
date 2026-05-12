@@ -22,9 +22,9 @@ def extract_text_with_ocr(file_bytes: bytes) -> str:
     full_text: list[str] = []
     try:
         pdf = fitz.open(stream=file_bytes, filetype="pdf")
-        max_pages = min(int(os.getenv("PDF_OCR_MAX_PAGES", "12")), pdf.page_count)
-        max_chars = int(os.getenv("PDF_OCR_MAX_CHARS", "25000"))
-        enough_chars = int(os.getenv("PDF_OCR_ENOUGH_CHARS", "12000"))
+        max_pages = min(int(os.getenv("PDF_OCR_MAX_PAGES", "6")), pdf.page_count)
+        max_chars = int(os.getenv("PDF_OCR_MAX_CHARS", "12000"))
+        enough_chars = int(os.getenv("PDF_OCR_ENOUGH_CHARS", "6000"))
         total_chars = 0
 
         for index in range(max_pages):
