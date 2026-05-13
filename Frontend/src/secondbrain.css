@@ -2172,16 +2172,12 @@ body {
 }
 
 /* Product-focused workspace refinements */
-.chat-panel {
+.dashboard-shell {
   order: -1;
 }
 
-.dashboard-shell {
-  order: 0;
-}
-
+.chat-panel,
 .bottom-grid {
-  order: 1;
   margin: 0 2.35rem 1.75rem;
 }
 
@@ -2205,9 +2201,13 @@ body {
 }
 
 .chat-feed {
-  min-height: 52vh;
-  max-height: 58vh;
+  min-height: clamp(220px, 30vh, 360px);
+  max-height: 44vh;
   scroll-behavior: smooth;
+}
+
+.empty-state {
+  margin: 0;
 }
 
 .composer {
@@ -2250,21 +2250,22 @@ body {
 }
 
 .dashboard-shell {
-  padding-top: 1rem;
+  padding-top: 0.65rem;
 }
 
 .dashboard-header {
-  min-height: 82px;
+  min-height: 72px;
 }
 
 .dashboard-stat-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.9rem;
-  padding: 1rem 0;
+  padding: 0.85rem 0 1rem;
 }
 
 .dashboard-stat-card {
-  min-height: 108px;
+  min-height: 92px;
+  padding: 0.8rem;
 }
 
 .dashboard-stat-card strong {
@@ -2289,11 +2290,11 @@ body {
 
 @media (max-width: 768px) {
   .chat-panel {
-    margin: 4.25rem 0.85rem 1rem;
+    margin: 0 0.85rem 1rem;
   }
 
   .chat-feed {
-    min-height: 48vh;
+    min-height: 240px;
     max-height: none;
   }
 

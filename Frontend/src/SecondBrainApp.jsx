@@ -14,7 +14,9 @@ import {
 
 const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ||
-  "https://secondbrain-w70q.onrender.com/api"
+  (typeof window !== "undefined" && window.location.port === "5173"
+    ? "http://localhost:8000/api"
+    : "/api")
 ).trim();
 const apiKey = (import.meta.env.VITE_API_KEY || "").trim();
 
@@ -252,7 +254,7 @@ function MessageBody({ text }) {
 function SecondBrainAppContent() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [activeSection, setActiveSection] = useState("chat");
+  const [activeSection, setActiveSection] = useState("dashboard");
   const [questionLoading, setQuestionLoading] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -628,11 +630,9 @@ function SecondBrainAppContent() {
     setUploadLoading(true);
     setUploadStatus(`Uploading ${selectedFile.name}...`);
     setStatusMessage("");
-    openChat();
 
     try {
       const response = await withColdStartNotice(api.post("/upload-pdf", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
         timeout: UPLOAD_TIMEOUT_MS,
       }));
       const payload = unwrapPayload(response.data);
@@ -667,7 +667,6 @@ function SecondBrainAppContent() {
     setUploadLoading(true);
     setUploadStatus("Indexing YouTube...");
     setStatusMessage("");
-    openChat();
 
     try {
       const response = await withColdStartNotice(api.post(
@@ -717,11 +716,9 @@ function SecondBrainAppContent() {
     setUploadLoading(true);
     setUploadStatus(`Reading ${selectedFile.name}...`);
     setStatusMessage("");
-    openChat();
 
     try {
       const response = await withColdStartNotice(api.post("/upload-image", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
         timeout: UPLOAD_TIMEOUT_MS,
       }));
       const payload = unwrapPayload(response.data);
