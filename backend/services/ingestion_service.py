@@ -3,23 +3,24 @@ from __future__ import annotations
 from services.embeddings import create_embeddings
 from services.activity_service import record_activity
 from services.graph_service import upsert_graph_from_text
-from services.ocr_service import extract_text_from_image, extract_text_with_groq_vision
+from services.ocr_service import extract_text_from_image
 from services.pdf_processor import extract_text
 from services.topic_classifier import detect_topic
 from services.vector_store import store_document
 from services.youtube_ingestion import extract_transcript
 
 
-def extract_text_with_ocr(file_bytes: bytes) -> str:
+def extract_text_with_ocr(file_bytes: bytes) -> tuple[str, list[str]]:
     """OCR fallback for scanned PDFs using PyMuPDF page rendering."""
     try:
         import os
 
         import fitz
-    except Exception:
-        return ""
+    except Exception as exc:
+        return "", [f"PDF page rendering is unavailable: {exc}"]
 
     full_text: list[str] = []
+    warnings: list[str] = []
     try:
         pdf = fitz.open(stream=file_bytes, filetype="pdf")
         max_pages = min(int(os.getenv("PDF_OCR_MAX_PAGES", "6")), pdf.page_count)
@@ -29,33 +30,37 @@ def extract_text_with_ocr(file_bytes: bytes) -> str:
 
         for index in range(max_pages):
             page = pdf[index]
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
             image_bytes = pixmap.tobytes("png")
-            text, warning = extract_text_with_groq_vision(image_bytes, "image/png")
-            if warning and not text.strip():
-                continue
+            text, warning = extract_text_from_image(image_bytes)
+            if warning:
+                warnings.append(f"Page {index + 1}: {warning}")
             if text.strip():
                 page_text = f"Page {index + 1}:\n{text.strip()}"
                 full_text.append(page_text)
                 total_chars += len(page_text)
             if total_chars >= max_chars or total_chars >= enough_chars:
                 break
-    except Exception:
-        return ""
+    except Exception as exc:
+        warnings.append(f"Scanned PDF OCR failed: {exc}")
 
-    return "\n".join(full_text).strip()
+    return "\n".join(full_text).strip(), warnings
 
 
 def ingest_pdf(file_bytes: bytes, filename: str, user_id: str = "anonymous") -> dict:
     """Extract, embed, and persist a PDF with OCR fallback."""
     text = extract_text(file_bytes)
+    ocr_warnings: list[str] = []
 
     if not text.strip():
-        text = extract_text_with_ocr(file_bytes)
+        text, ocr_warnings = extract_text_with_ocr(file_bytes)
 
     if not text.strip():
+        detail = " ".join(ocr_warnings[:2]).strip()
         raise ValueError(
-            "No readable text found in this PDF. It appears to be scanned, and Groq vision OCR could not extract text from it."
+            "No readable text found in this PDF. It appears to be scanned or image-only. "
+            "Install Tesseract OCR on the backend host or configure GROQ_API_KEY for vision OCR."
+            + (f" Details: {detail}" if detail else "")
         )
 
     chunks, embeddings = create_embeddings(text)
