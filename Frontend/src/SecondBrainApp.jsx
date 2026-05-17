@@ -187,7 +187,7 @@ function DiagramBlock({ lines }) {
               {flowParts.map((part, partIndex) => (
                 <div className="diagram-flow-part" key={`${part}-${partIndex}`}>
                   <span className="diagram-node">{part}</span>
-                  {partIndex < flowParts.length - 1 && <span className="diagram-arrow">â†’</span>}
+                  {partIndex < flowParts.length - 1 && <span className="diagram-arrow">-&gt;</span>}
                 </div>
               ))}
             </div>

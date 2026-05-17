@@ -64,6 +64,12 @@ def _keywords(text: str) -> set[str]:
     return {word.strip("-_") for word in words if word not in STOPWORDS}
 
 
+def _keyword_sequence(text: str) -> list[str]:
+    """Extract meaningful words while preserving order."""
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_+#-]{2,}", text.lower())
+    return [word.strip("-_") for word in words if word not in STOPWORDS]
+
+
 def _lexical_overlap(question: str, chunk_text: str) -> float:
     """Return how much a chunk literally overlaps with the user's question."""
     question_terms = _keywords(question)
@@ -77,13 +83,66 @@ def _lexical_overlap(question: str, chunk_text: str) -> float:
     return len(question_terms & chunk_terms) / len(question_terms)
 
 
+def _question_acronyms(question: str) -> set[str]:
+    """Extract short acronym-like tokens from a question."""
+    return {
+        token.lower()
+        for token in re.findall(r"\b[a-zA-Z]{2,8}\b", question)
+        if token.lower() not in STOPWORDS
+    }
+
+
+def _has_acronym_match(acronym: str, text: str) -> bool:
+    """Match ANN to either `ANN`, `A N N`, or `artificial neural network`."""
+    if not acronym:
+        return False
+
+    escaped_letters = r"\s*[\W_]*\s*".join(re.escape(letter) for letter in acronym)
+    if re.search(rf"\b{re.escape(acronym)}\b", text, flags=re.IGNORECASE):
+        return True
+    if re.search(rf"\b{escaped_letters}\b", text, flags=re.IGNORECASE):
+        return True
+
+    words = _keyword_sequence(text)
+    acronym_length = len(acronym)
+    if acronym_length > len(words):
+        return False
+
+    for index in range(0, len(words) - acronym_length + 1):
+        initials = "".join(word[0] for word in words[index : index + acronym_length])
+        if initials == acronym:
+            return True
+    return False
+
+
+def _acronym_overlap(question: str, chunk_text: str) -> float:
+    acronyms = _question_acronyms(question)
+    if not acronyms:
+        return 0.0
+
+    matches = sum(1 for acronym in acronyms if _has_acronym_match(acronym, chunk_text))
+    return matches / len(acronyms)
+
+
 def _rerank_with_lexical_signal(question: str, results: list[dict]) -> list[dict]:
     """Combine vector similarity with keyword overlap to avoid random off-topic chunks."""
     reranked: list[dict] = []
     for item in results:
         lexical_score = _lexical_overlap(question, item.get("text", ""))
-        combined_score = (float(item.get("score", 0.0)) * 0.65) + (lexical_score * 0.35)
-        reranked.append({**item, "lexical_score": lexical_score, "combined_score": combined_score})
+        acronym_score = _acronym_overlap(question, item.get("text", ""))
+        combined_score = (
+            (float(item.get("score", 0.0)) * 0.55)
+            + (lexical_score * 0.30)
+            + (acronym_score * 0.15)
+        )
+        reranked.append(
+            {
+                **item,
+                "lexical_score": lexical_score,
+                "acronym_score": acronym_score,
+                "combined_score": combined_score,
+            }
+        )
 
     reranked.sort(key=lambda item: item["combined_score"], reverse=True)
     return reranked
@@ -125,7 +184,11 @@ def _select_relevant_results(
         filtered = [
             item
             for item in results
-            if item.get("lexical_score", 0.0) >= 0.18 or item.get("score", 0.0) >= 0.42
+            if (
+                item.get("lexical_score", 0.0) >= 0.18
+                or item.get("acronym_score", 0.0) > 0
+                or item.get("score", 0.0) >= 0.42
+            )
         ]
         return filtered[:limit]
 
@@ -557,6 +620,52 @@ def _document_chunks_as_results(document_id: int, user_id: str, limit: int = 12)
     return results
 
 
+def _active_document_lookup_results(
+    *,
+    active_document: dict | None,
+    question: str,
+    user_id: str,
+    limit: int = 6,
+) -> list[dict]:
+    """Search active PDF chunks directly when semantic retrieval is too weak."""
+    if active_document is None or active_document.get("id") is None:
+        return []
+
+    chunks = get_document_chunks(active_document["id"], limit=80, user_id=user_id)
+    candidates: list[dict] = []
+    for chunk in chunks:
+        text = str(chunk.get("chunk_text") or "").strip()
+        if not text:
+            continue
+
+        lexical_score = _lexical_overlap(question, text)
+        acronym_score = _acronym_overlap(question, text)
+        if lexical_score <= 0 and acronym_score <= 0:
+            continue
+
+        score = max(lexical_score, acronym_score)
+        candidates.append(
+            {
+                "chunk_id": chunk["id"],
+                "document_id": active_document["id"],
+                "text": text,
+                "topic": chunk.get("topic") or "General",
+                "score": score,
+                "lexical_score": lexical_score,
+                "acronym_score": acronym_score,
+                "combined_score": score,
+                "metadata": {
+                    "title": chunk.get("title") or active_document.get("title") or "Uploaded source",
+                    "source_type": chunk.get("source_type") or active_document.get("source_type") or "source",
+                    "chunk_index": chunk.get("chunk_index", 0),
+                },
+            }
+        )
+
+    candidates.sort(key=lambda item: item["combined_score"], reverse=True)
+    return candidates[:limit]
+
+
 def _active_document_fallback_results(
     *,
     active_document: dict | None,
@@ -952,6 +1061,12 @@ def query_knowledge_base(
         limit=6,
         require_source_match=active_document is not None,
     )
+    if active_document is not None and not selected_results:
+        selected_results = _active_document_lookup_results(
+            active_document=active_document,
+            question=question,
+            user_id=user_id,
+        )
     selected_results = _active_document_fallback_results(
         active_document=active_document,
         selected_results=selected_results,
