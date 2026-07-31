@@ -1,0 +1,57 @@
+/* Product design tokens: single source of truth */
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-serif: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-mono: "SF Mono", Consolas, ui-monospace, monospace;
+
+  --accent: #6c5ce7;
+  --accent-hover: #5a4bd1;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(108, 92, 231, 0.1);
+
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-6: 48px;
+  --space-8: 64px;
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-modal: 16px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 8px 24px rgba(28, 28, 30, 0.08);
+  --shadow-popover: 0 24px 60px rgba(28, 28, 30, 0.18);
+  --transition-fast: 160ms ease;
+  --transition-med: 240ms ease;
+}
+
+:root[data-theme="light"] {
+  --bg: #f7f7f9;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f7f7f9;
+  --surface-3: #eeeeF2;
+  --border: #e5e5ea;
+  --border-strong: #d8d8df;
+  --text: #1c1c1e;
+  --text-dim: #4b4b52;
+  --text-muted: #8e8e93;
+  --glass: rgba(255, 255, 255, 0.88);
+}
+
+:root[data-theme="dark"],
+:root:not([data-theme]) {
+  --bg: #101114;
+  --bg-2: #15161a;
+  --surface: #1c1d22;
+  --surface-2: #24262c;
+  --surface-3: #2d3038;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text: #f7f7f9;
+  --text-dim: #c7c7cf;
+  --text-muted: #8e8e93;
+  --glass: rgba(28, 29, 34, 0.88);
+}

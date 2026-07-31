@@ -115,6 +115,55 @@ const starterPrompts = [
   "Teach this step by step with an example.",
 ];
 
+const capabilityCards = [
+  {
+    label: "Upload",
+    title: "Add your material",
+    text: "PDFs, images, YouTube videos, notes, and transcripts become searchable knowledge.",
+    action: "Add source",
+    target: "upload",
+  },
+  {
+    label: "Ask",
+    title: "Get grounded answers",
+    text: "Ask questions, request summaries, compare ideas, and get answers from your uploaded sources.",
+    action: "Ask AI",
+    target: "chat",
+  },
+  {
+    label: "Study",
+    title: "Revise smarter",
+    text: "Create flashcards, find weak topics, build concept maps, and follow a study path.",
+    action: "Study plan",
+    target: "study",
+  },
+];
+
+const benefitCards = [
+  { title: "Video to notes", text: "Paste a YouTube link or transcript and turn it into key points, questions, and revision notes." },
+  { title: "PDF tutor", text: "Upload a chapter or report, then ask the AI to explain, summarize, or teach it step by step." },
+  { title: "Memory workspace", text: "Save notes and keep your sources connected so the assistant remembers your learning context." },
+  { title: "Exam practice", text: "Generate flashcards and weak-topic practice from the exact material you added." },
+];
+
+const workflowCards = [
+  {
+    title: "Summarize my source",
+    text: "Best after uploading a PDF, image, or YouTube transcript.",
+    prompt: "Summarize my active source with key ideas, examples, and revision points.",
+  },
+  {
+    title: "Teach me step by step",
+    text: "Turns dense content into a simple learning flow.",
+    prompt: "Teach the active source step by step like I am learning it for the first time.",
+  },
+  {
+    title: "Make a practice plan",
+    text: "Creates questions, flashcards, and what to revise next.",
+    prompt: "Create a study plan from my active source with practice questions and weak areas.",
+  },
+];
+
 const statusChecks = [
   { key: "llm_ready", label: "AI answer engine", ready: "Groq connected", blocked: "Needs Groq API key" },
   { key: "ingestion_ready", label: "PDF + YouTube ingestion", ready: "Core ingestion ready", blocked: "Missing ingestion dependency" },
@@ -164,6 +213,15 @@ function unwrapPayload(payload) {
 function normalizeAssistantText(text) {
   const cleaned = String(text || "").trim();
   return cleaned || "I am here, but I could not form a complete answer yet. Try asking in a more specific way.";
+}
+
+function formatMessageTime(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function parseDiagramLines(lines) {
@@ -252,6 +310,23 @@ function MessageBody({ text }) {
 }
 
 function SecondBrainAppContent() {
+  const [authForm, setAuthForm] = useState(() => {
+    try {
+      return {
+        name: window.localStorage.getItem("second_brain_user_name") || "",
+        email: window.localStorage.getItem("second_brain_user_email") || "",
+      };
+    } catch {
+      return { name: "", email: "" };
+    }
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    try {
+      return window.localStorage.getItem("second_brain_authenticated") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -275,7 +350,13 @@ function SecondBrainAppContent() {
   const [graph, setGraph] = useState({ nodes: [], edges: [] });
   const [statusMessage, setStatusMessage] = useState("");
   const [language, setLanguage] = useState("english");
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState(() => {
+    try {
+      return window.localStorage.getItem("second_brain_theme") || "dark";
+    } catch {
+      return "dark";
+    }
+  });
   const [strictMode, setStrictMode] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("Ready");
   const [currentDocument, setCurrentDocument] = useState(null);
@@ -286,13 +367,20 @@ function SecondBrainAppContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [coldStartNotice, setColdStartNotice] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [featureDrawerOpen, setFeatureDrawerOpen] = useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const chatFeedRef = useRef(null);
   const chatSectionRef = useRef(null);
 
   const profile = {
-    name: "Your Name",
+    name: authForm.name || "Your Name",
     plan: "Pro workspace",
-    initials: "YN",
+    initials: (authForm.name || "YN")
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase(),
   };
 
   const topicData = Object.entries(analytics.topics || {}).map(([topic, count]) => ({
@@ -358,9 +446,35 @@ function SecondBrainAppContent() {
         : "Explain the active uploaded source with a mini diagram.",
     },
   ];
+  const youtubeModeLabel = youtubeTranscript.trim()
+    ? "Manual transcript mode"
+    : "Automatic captions mode";
+
+  const jumpToSection = (sectionId) => {
+    const target = document.getElementById(sectionId);
+    const isSidebarTarget = Boolean(target?.closest(".sidebar-panel"));
+    const isMobileViewport = window.matchMedia?.("(max-width: 1024px)")?.matches;
+
+    setActiveSection(sectionId);
+    setMobileSidebarOpen(Boolean(isSidebarTarget && isMobileViewport));
+    setFeatureDrawerOpen(false);
+    setActionMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+        inline: "nearest",
+      });
+    });
+  };
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem("second_brain_theme", theme);
+    } catch {
+      // Theme persistence is optional.
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -491,7 +605,7 @@ function SecondBrainAppContent() {
     if (!currentQuestion) return;
     const fallbackDocument = currentDocument || recentDocuments[0] || null;
 
-    setMessages((prev) => [...prev, { role: "user", text: currentQuestion }]);
+    setMessages((prev) => [...prev, { role: "user", text: currentQuestion, createdAt: new Date().toISOString() }]);
     setInput("");
     setQuestionLoading(true);
     setStatusMessage("");
@@ -519,6 +633,7 @@ function SecondBrainAppContent() {
         {
           role: "assistant",
           text: safeAnswer,
+          createdAt: new Date().toISOString(),
           topic: answerPayload.topic,
           sources: answerPayload.sources || [],
           language: answerPayload.language,
@@ -533,6 +648,7 @@ function SecondBrainAppContent() {
         {
           role: "assistant",
           text: error.response?.data?.detail || "The assistant could not answer right now.",
+          createdAt: new Date().toISOString(),
           topic: "System",
         },
       ]);
@@ -644,6 +760,7 @@ function SecondBrainAppContent() {
         {
           role: "assistant",
           text: `PDF indexed: ${title}\n\nYou can ask questions from this source now. Try "summarize this PDF" or "teach me the first topic".`,
+          createdAt: new Date().toISOString(),
           topic: "upload",
           documentId: payload.document_id,
           documentTitle: title,
@@ -688,6 +805,7 @@ function SecondBrainAppContent() {
         {
           role: "assistant",
           text: `YouTube source indexed: ${title}\n\nAsk for a summary, key ideas, or a study flow from this source.`,
+          createdAt: new Date().toISOString(),
           topic: "upload",
           documentId: payload.document_id,
           documentTitle: title,
@@ -738,6 +856,7 @@ function SecondBrainAppContent() {
         {
           role: "assistant",
           text: `Image indexed: ${title}\n\nOCR text is ready. Ask me to explain, summarize, or turn it into revision notes.`,
+          createdAt: new Date().toISOString(),
           topic: "upload",
           documentId: payload.document_id,
           documentTitle: title,
@@ -783,8 +902,178 @@ function SecondBrainAppContent() {
     }
   };
 
+  const handleAuthSubmit = (event) => {
+    event.preventDefault();
+    const name = authForm.name.trim() || "Learner";
+    const email = authForm.email.trim();
+    setAuthForm({ name, email });
+    try {
+      window.localStorage.setItem("second_brain_authenticated", "true");
+      window.localStorage.setItem("second_brain_user_name", name);
+      window.localStorage.setItem("second_brain_user_email", email);
+    } catch {
+      // Local auth state is only for the product preview experience.
+    }
+    setIsAuthenticated(true);
+  };
+
+  const signOut = () => {
+    try {
+      window.localStorage.removeItem("second_brain_authenticated");
+    } catch {
+      // Ignore storage failures.
+    }
+    setIsAuthenticated(false);
+  };
+
+  const launcherActions = [
+    { label: "Upload PDF or image", text: "Add chapters, notes, screenshots, or scanned pages.", action: () => jumpToSection("upload") },
+    { label: "Add YouTube video", text: "Index captions or paste a transcript fallback.", action: () => jumpToSection("upload") },
+    { label: "Ask from sources", text: "Summaries, explanations, comparisons, and citations.", action: () => jumpToSection("chat") },
+    { label: "Create notes", text: "Save ideas and connect them to your knowledge base.", action: () => jumpToSection("notes") },
+    { label: "Study mode", text: "Flashcards, weak topics, and revision missions.", action: () => jumpToSection("study") },
+    { label: "Knowledge graph", text: "See concepts and how your sources connect.", action: () => jumpToSection("graph") },
+  ];
+
+  const quickStartActions = [
+    { label: "Summarize", prompt: "Summarize my active source with key points, examples, and revision notes." },
+    { label: "Teach", prompt: "Teach my active source step by step in simple language." },
+    { label: "Practice", prompt: "Create practice questions and flashcards from my active source." },
+  ];
+
+  if (!isAuthenticated) {
+    return (
+      <div className="auth-shell">
+        <section className="auth-hero">
+          <div className="auth-copy">
+            <p className="eyebrow">Second Brain AI</p>
+            <h1>Understand every source faster.</h1>
+            <p>
+              Sign in to organize PDFs, screenshots, YouTube transcripts, notes, flashcards,
+              and AI answers inside one focused study workspace.
+            </p>
+            <div className="auth-benefits">
+              <span>PDF tutor</span>
+              <span>YouTube notes</span>
+              <span>Flashcards</span>
+              <span>Knowledge graph</span>
+            </div>
+          </div>
+          <form className="auth-card" onSubmit={handleAuthSubmit}>
+            <div>
+              <h2>Welcome back</h2>
+              <p>Use any name and email to preview the workspace.</p>
+            </div>
+            <label>
+              <span>Name</span>
+              <input
+                value={authForm.name}
+                onChange={(event) => setAuthForm((prev) => ({ ...prev, name: event.target.value }))}
+                placeholder="Ram Arora"
+              />
+            </label>
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                value={authForm.email}
+                onChange={(event) => setAuthForm((prev) => ({ ...prev, email: event.target.value }))}
+                placeholder="you@example.com"
+              />
+            </label>
+            <button className="primary-button" type="submit">
+              Enter workspace
+            </button>
+            <small>Preview auth only. Backend user accounts can be connected later.</small>
+          </form>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell app-root">
+      <button
+        className="feature-side-button"
+        onClick={() => setFeatureDrawerOpen((prev) => !prev)}
+        type="button"
+        aria-label="Open feature launcher"
+      >
+        Features
+      </button>
+
+      {featureDrawerOpen && (
+        <aside className="feature-drawer" aria-label="Feature launcher">
+          <div className="feature-drawer-head">
+            <div>
+              <span>Workspace menu</span>
+              <h2>What do you want to do?</h2>
+            </div>
+            <button className="tiny-button" onClick={() => setFeatureDrawerOpen(false)} type="button">
+              Close
+            </button>
+          </div>
+          <div className="feature-action-list">
+            {launcherActions.map((item) => (
+              <button className="feature-action" key={item.label} onClick={item.action} type="button">
+                <strong>{item.label}</strong>
+                <span>{item.text}</span>
+              </button>
+            ))}
+          </div>
+          <button className="ghost-button" onClick={signOut} type="button">
+            Sign out
+          </button>
+        </aside>
+      )}
+
+      <div className="bottom-chat-dock">
+        <button
+          className="dock-plus-button"
+          onClick={() => setActionMenuOpen((prev) => !prev)}
+          type="button"
+          aria-label="Open quick actions"
+        >
+          +
+        </button>
+        {actionMenuOpen && (
+          <div className="dock-action-popover">
+            <button onClick={() => jumpToSection("upload")} type="button">Add source</button>
+            <button onClick={() => jumpToSection("study")} type="button">Study tools</button>
+            <button onClick={() => jumpToSection("notes")} type="button">Notes</button>
+            <button onClick={() => jumpToSection("graph")} type="button">Graph</button>
+          </div>
+        )}
+        <textarea
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={handleEnter}
+          placeholder="Ask anything from your sources..."
+        />
+        <button
+          className="dock-send-button"
+          onClick={() => askQuestion()}
+          disabled={questionLoading || !input.trim()}
+          type="button"
+        >
+          Send
+        </button>
+        <div className="dock-quick-row">
+          {quickStartActions.map((action) => (
+            <button
+              key={action.label}
+              onClick={() => {
+                setInput(action.prompt);
+                jumpToSection("chat");
+              }}
+              type="button"
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <button
         className="mobile-menu-button"
         onClick={() => setMobileSidebarOpen(true)}
@@ -807,9 +1096,9 @@ function SecondBrainAppContent() {
             className={`mobile-tab ${activeSection === section.id ? "active" : ""}`}
             href={`#${section.id}`}
             key={section.id}
-            onClick={() => {
-              setActiveSection(section.id);
-              setMobileSidebarOpen(false);
+            onClick={(event) => {
+              event.preventDefault();
+              jumpToSection(section.id);
             }}
           >
             <span>{section.short}</span>
@@ -826,7 +1115,10 @@ function SecondBrainAppContent() {
                 className={`rail-link ${activeSection === section.id ? "active" : ""}`}
                 href={`#${section.id}`}
                 key={section.id}
-                onClick={() => setActiveSection(section.id)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  jumpToSection(section.id);
+                }}
                 title={section.label}
               >
                 <span className="rail-badge">{section.short}</span>
@@ -863,9 +1155,9 @@ function SecondBrainAppContent() {
                 className={`nav-link ${activeSection === section.id ? "active" : ""}`}
                 href={`#${section.id}`}
                 key={section.id}
-                onClick={() => {
-                  setActiveSection(section.id);
-                  setMobileSidebarOpen(false);
+                onClick={(event) => {
+                  event.preventDefault();
+                  jumpToSection(section.id);
                 }}
               >
                 <span className="nav-icon">{navMeta[section.id]?.icon}</span>
@@ -1002,9 +1294,12 @@ function SecondBrainAppContent() {
 
           <div className="section-block" id="upload">
             <div className="section-head">
-              <h2>Ingestion</h2>
+              <h2>Add Sources</h2>
               <span>{uploadLoading ? uploadStatus : uploadStatus}</span>
             </div>
+            <p className="section-copy">
+              Add one source first. After indexing, use Ask AI, Notes, Study Mode, and Graph from the same material.
+            </p>
             {currentDocument && (
               <p className="section-copy">
                 Active source: <strong>{currentDocument.title}</strong>
@@ -1057,6 +1352,17 @@ function SecondBrainAppContent() {
                 placeholder="https://www.youtube.com/watch?v=..."
               />
             </label>
+            <div className="youtube-mode-card">
+              <div>
+                <strong>{youtubeModeLabel}</strong>
+                <p>
+                  {youtubeTranscript.trim()
+                    ? "The app will index the pasted transcript or notes directly."
+                    : "The app will try YouTube captions first. If captions are blocked or missing, paste the transcript below."}
+                </p>
+              </div>
+              <span>{youtubeTranscript.trim() ? `${youtubeTranscript.trim().length} chars` : "fallback ready"}</span>
+            </div>
             <label className="upload-field">
               <span>Optional transcript fallback</span>
               <textarea
@@ -1066,7 +1372,7 @@ function SecondBrainAppContent() {
               />
             </label>
             <button className="secondary-button" onClick={uploadYoutube} disabled={!youtubeUrl.trim() || uploadLoading}>
-              {youtubeTranscript.trim() ? "Index Transcript" : "Index YouTube"}
+              {uploadLoading ? uploadStatus : youtubeTranscript.trim() ? "Index pasted transcript" : "Try automatic captions"}
             </button>
           </div>
 
@@ -1217,21 +1523,117 @@ function SecondBrainAppContent() {
         </aside>
 
         <main className="main-layout">
-          <section className="dashboard-shell" id="dashboard">
-            <div className="dashboard-header">
+          <header className="app-topbar">
+            <div className="topbar-brand">
+              <span className="topbar-logo">SB</span>
               <div>
-                <h2 className="dashboard-title">Dashboard</h2>
-                <p>{todayLabel} · Good morning</p>
-              </div>
-              <div className="dashboard-actions">
-                <button className="ghost-button" onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
-                  {theme === "dark" ? "Light" : "Dark"}
-                </button>
-                <button className="primary-button" onClick={saveComposerAsNote} disabled={!input.trim()}>
-                  + New Note
-                </button>
+                <strong>Second Brain</strong>
+                <small>{currentDocument ? `Active source: ${currentDocument.title}` : "Personal AI study workspace"}</small>
               </div>
             </div>
+            <div className="topbar-actions">
+              <button className="ghost-button" onClick={() => setFeatureDrawerOpen(true)} type="button">
+                Features
+              </button>
+              <button className="ghost-button" onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))} type="button">
+                {theme === "dark" ? "Light" : "Dark"}
+              </button>
+              <button className="tiny-button" onClick={signOut} type="button">
+                Sign out
+              </button>
+            </div>
+          </header>
+          <section className="dashboard-shell" id="dashboard">
+            <div className="workspace-intro">
+              <div className="intro-copy">
+                <p className="eyebrow">AI study workspace</p>
+                <h2 className="dashboard-title">One place to upload, understand, and revise your learning material.</h2>
+                <p className="intro-text">
+                  Second Brain turns PDFs, screenshots, YouTube transcripts, and notes into a personal tutor.
+                  Users can ask questions, get summaries, create flashcards, find weak topics, and keep everything connected.
+                </p>
+                <div className="intro-actions">
+                  <button className="primary-button" onClick={() => jumpToSection("upload")} type="button">
+                    Start with upload
+                  </button>
+                  <button className="secondary-button" onClick={() => jumpToSection("chat")} type="button">
+                    Ask a question
+                  </button>
+                  <button className="ghost-button" onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))} type="button">
+                    {theme === "dark" ? "Light" : "Dark"}
+                  </button>
+                </div>
+              </div>
+              <div className="intro-status">
+                <span>How it works</span>
+                <div className="intro-step-list">
+                  <p><strong>1</strong> Add material</p>
+                  <p><strong>2</strong> Ask or summarize</p>
+                  <p><strong>3</strong> Revise with notes and flashcards</p>
+                </div>
+                <small>{sourceCount} sources indexed · {currentDocument ? `Active: ${currentDocument.title}` : "No active source yet"}</small>
+              </div>
+            </div>
+
+            <div className="capability-grid">
+              {capabilityCards.map((card) => (
+                <button
+                  className="capability-card"
+                  key={card.title}
+                  onClick={() => jumpToSection(card.target)}
+                  type="button"
+                >
+                  <span>{card.label}</span>
+                  <strong>{card.title}</strong>
+                  <p>{card.text}</p>
+                  <small>{card.action}</small>
+                </button>
+              ))}
+            </div>
+
+            <section className="benefit-panel">
+              <div className="benefit-panel-head">
+                <div>
+                  <p className="eyebrow">What users can do</p>
+                  <h3>Everything useful is visible from the first screen.</h3>
+                </div>
+                <button className="ghost-button" onClick={() => jumpToSection("upload")} type="button">
+                  Add first source
+                </button>
+              </div>
+              <div className="benefit-grid">
+                {benefitCards.map((benefit) => (
+                  <div className="benefit-card" key={benefit.title}>
+                    <strong>{benefit.title}</strong>
+                    <p>{benefit.text}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="workflow-panel">
+              <div className="workflow-copy">
+                <p className="eyebrow">Try these workflows</p>
+                <h3>Useful actions, not random buttons.</h3>
+                <p>Pick a workflow after adding a source. The prompt goes straight into the AI workspace.</p>
+              </div>
+              <div className="workflow-list">
+                {workflowCards.map((workflow) => (
+                  <button
+                    className="workflow-card"
+                    key={workflow.title}
+                    onClick={() => {
+                      setInput(workflow.prompt);
+                      jumpToSection("chat");
+                    }}
+                    type="button"
+                  >
+                    <strong>{workflow.title}</strong>
+                    <span>{workflow.text}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
 
             <div className="dashboard-stat-grid">
               {statCards.map((card) => (
@@ -1403,6 +1805,7 @@ function SecondBrainAppContent() {
                   <div className="message-card">
                     <MessageBody text={message.text} />
                   </div>
+                  <small className="message-time">{formatMessageTime(message.createdAt)}</small>
                   {message.role === "assistant" && (
                     <div className="message-meta">
                       <TopicPill topic={message.topic} />
@@ -1471,14 +1874,14 @@ function SecondBrainAppContent() {
                       <XAxis dataKey="topic" stroke="#9db4d2" />
                       <YAxis stroke="#9db4d2" />
                       <Tooltip />
-                      <Bar dataKey="count" fill="#3dd9b6" radius={[8, 8, 0, 0]} />
+                      <Bar dataKey="count" fill="var(--accent)" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="chart-card">
                   <ResponsiveContainer width="100%" height={240}>
                     <PieChart>
-                      <Pie data={topicData} dataKey="count" nameKey="topic" outerRadius={80} fill="#8fd3ff" />
+                      <Pie data={topicData} dataKey="count" nameKey="topic" outerRadius={80} fill="var(--accent)" />
                       <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
