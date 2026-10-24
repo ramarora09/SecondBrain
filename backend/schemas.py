@@ -17,15 +17,6 @@ class AskRequest(BaseModel):
     strict: bool = False
 
 
-class YouTubeIngestRequest(BaseModel):
-    """YouTube ingestion payload."""
-
-    url: str = Field(..., min_length=5)
-    transcript: str | None = None
-    title: str | None = None
-    user_id: str | None = None
-
-
 class FlashcardGenerateRequest(BaseModel):
     """Flashcard generation payload."""
 

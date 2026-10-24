@@ -121,7 +121,7 @@ const capabilityCards = [
   {
     label: "Upload",
     title: "Add your material",
-    text: "PDFs, images, YouTube videos, notes, and transcripts become searchable knowledge.",
+    text: "PDFs, images, and notes become searchable knowledge.",
     action: "Add source",
     target: "upload",
   },
@@ -163,7 +163,6 @@ const capabilityCards = [
 ];
 
 const benefitCards = [
-  { title: "Video to notes", text: "Paste a YouTube link or transcript and turn it into key points, questions, and revision notes." },
   { title: "PDF tutor", text: "Upload a chapter or report, then ask the AI to explain, summarize, or teach it step by step." },
   { title: "Memory workspace", text: "Save notes and keep your sources connected so the assistant remembers your learning context." },
   { title: "Exam practice", text: "Generate flashcards and weak-topic practice from the exact material you added." },
@@ -172,7 +171,7 @@ const benefitCards = [
 const workflowCards = [
   {
     title: "Summarize my source",
-    text: "Best after uploading a PDF, image, or YouTube transcript.",
+    text: "Best after uploading a PDF or image.",
     prompt: "Summarize my active source with key ideas, examples, and revision points.",
   },
   {
@@ -189,7 +188,7 @@ const workflowCards = [
 
 const statusChecks = [
   { key: "llm_ready", label: "AI answer engine", ready: "Groq connected", blocked: "Needs Groq API key" },
-  { key: "ingestion_ready", label: "PDF + YouTube ingestion", ready: "Core ingestion ready", blocked: "Missing ingestion dependency" },
+  { key: "ingestion_ready", label: "PDF ingestion", ready: "Core ingestion ready", blocked: "Missing PDF dependency" },
   { key: "embedding_model_ready", label: "Semantic retrieval", ready: "Transformer retrieval ready", blocked: "Fast hash retrieval active" },
 ];
 
@@ -359,8 +358,6 @@ function SecondBrainAppContent() {
   });
   const [pdfFile, setPdfFile] = useState(null);
   const [imageFile, setImageFile] = useState(null);
-  const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [youtubeTranscript, setYoutubeTranscript] = useState("");
   const [flashcards, setFlashcards] = useState([]);
   const [graph, setGraph] = useState({ nodes: [], edges: [] });
   const [statusMessage, setStatusMessage] = useState("");
@@ -418,7 +415,7 @@ function SecondBrainAppContent() {
     }));
   const sourceCount = analytics.documents_uploaded ?? 0;
   const nextStep = sourceCount === 0
-    ? { eyebrow: "START HERE", title: "Add your first source", text: "Bring in a PDF, image, or video transcript. Your AI tutor and study tools will use it as context.", action: "Add a source", target: "upload" }
+    ? { eyebrow: "START HERE", title: "Add your first source", text: "Bring in a PDF or image. Your AI tutor and study tools will use it as context.", action: "Add a source", target: "upload" }
     : flashcards.length > 0
       ? { eyebrow: "READY FOR REVIEW", title: `${flashcards.length} flashcard${flashcards.length === 1 ? " is" : "s are"} due`, text: "A short review session helps strengthen what you’ve learned from your sources.", action: "Review cards", target: "study" }
       : (analytics.total_questions || 0) === 0
@@ -466,9 +463,6 @@ function SecondBrainAppContent() {
         : "Explain the active uploaded source with a mini diagram.",
     },
   ];
-  const youtubeModeLabel = youtubeTranscript.trim()
-    ? "Manual transcript mode"
-    : "Automatic captions mode";
 
   const jumpToSection = (sectionId) => {
     if (!validPageIds.has(sectionId)) return;
@@ -608,7 +602,7 @@ function SecondBrainAppContent() {
   useEffect(() => {
     const feed = chatFeedRef.current;
     if (!feed) return;
-    feed.scrollTo({ top: feed.scrollHeight, behavior: "smooth" });
+    feed.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, questionLoading]);
 
   const openChat = () => {
@@ -839,53 +833,6 @@ function SecondBrainAppContent() {
       void refreshSidebarInBackground().finally(() => setUploadStatus("Ready"));
     } catch (error) {
       setStatusMessage(error.response?.data?.detail || "PDF upload failed.");
-      setUploadStatus("Ready");
-    } finally {
-      setUploadLoading(false);
-    }
-  };
-
-  const uploadYoutube = async () => {
-    if (!youtubeUrl.trim()) return;
-
-    setUploadLoading(true);
-    setUploadStatus("Indexing YouTube...");
-    setStatusMessage("");
-
-    try {
-      const response = await withColdStartNotice(api.post(
-        "/upload-youtube",
-        {
-          url: youtubeUrl.trim(),
-          transcript: youtubeTranscript.trim() || undefined,
-          title: youtubeTranscript.trim() ? `YouTube notes: ${youtubeUrl.trim()}` : undefined,
-          user_id: sessionId,
-        },
-        { timeout: UPLOAD_TIMEOUT_MS },
-      ));
-      const payload = unwrapPayload(response.data);
-      const title = payload.title || response.data.title || youtubeUrl.trim();
-      setStatusMessage(`Indexed YouTube source: ${title}`);
-      setCurrentDocument({ id: payload.document_id, title });
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: `YouTube source indexed: ${title}\n\nAsk for a summary, key ideas, or a study flow from this source.`,
-          createdAt: new Date().toISOString(),
-          topic: "upload",
-          documentId: payload.document_id,
-          documentTitle: title,
-        },
-      ]);
-      setYoutubeUrl("");
-      setYoutubeTranscript("");
-      setUploadLoading(false);
-      setUploadStatus("Refreshing dashboard...");
-      void refreshSidebarInBackground().finally(() => setUploadStatus("Ready"));
-    } catch (error) {
-      const detail = error.response?.data?.detail || "YouTube ingestion failed.";
-      setStatusMessage(`${detail} Paste the transcript below to index it manually.`);
       setUploadStatus("Ready");
     } finally {
       setUploadLoading(false);
@@ -1310,36 +1257,6 @@ function SecondBrainAppContent() {
             </label>
             {imageFile && uploadLoading && <p className="status-text">OCR started automatically. You can stay in the chat while it works.</p>}
 
-            <label className="upload-field">
-              <span>YouTube URL</span>
-              <input
-                value={youtubeUrl}
-                onChange={(event) => setYoutubeUrl(event.target.value)}
-                placeholder="https://www.youtube.com/watch?v=..."
-              />
-            </label>
-            <div className="youtube-mode-card">
-              <div>
-                <strong>{youtubeModeLabel}</strong>
-                <p>
-                  {youtubeTranscript.trim()
-                    ? "The app will index the pasted transcript or notes directly."
-                    : "The app will try YouTube captions first. If captions are blocked or missing, paste the transcript below."}
-                </p>
-              </div>
-              <span>{youtubeTranscript.trim() ? `${youtubeTranscript.trim().length} chars` : "fallback ready"}</span>
-            </div>
-            <label className="upload-field">
-              <span>Optional transcript fallback</span>
-              <textarea
-                value={youtubeTranscript}
-                onChange={(event) => setYoutubeTranscript(event.target.value)}
-                placeholder="If YouTube blocks automatic captions, paste the transcript or your video notes here..."
-              />
-            </label>
-            <button className="secondary-button" onClick={uploadYoutube} disabled={!youtubeUrl.trim() || uploadLoading}>
-              {uploadLoading ? uploadStatus : youtubeTranscript.trim() ? "Index pasted transcript" : "Try automatic captions"}
-            </button>
           </div>
 
           <div className="section-block" id="study">
@@ -1383,7 +1300,7 @@ function SecondBrainAppContent() {
             {graph.nodes.length === 0 ? (
               <EmptyHint
                 title="No graph yet"
-                text="Upload a PDF, image, or YouTube source. The app will extract concepts and show how they connect."
+                text="Upload a PDF or image. The app will extract concepts and show how they connect."
               />
             ) : (
               <>
@@ -1513,13 +1430,12 @@ function SecondBrainAppContent() {
           <div className="feature-pages">
             {activeSection === "upload" && (
               <section className="feature-page upload-page" aria-labelledby="upload-title">
-                <div className="feature-page-heading"><div><p className="eyebrow">Build your knowledge library</p><h1 id="upload-title">Add a source</h1><p>Bring in a PDF, image, or video transcript. Once indexed, it becomes available to Ask AI, Notes, and Study.</p></div><span className="page-icon">＋</span></div>
+                <div className="feature-page-heading"><div><p className="eyebrow">Build your knowledge library</p><h1 id="upload-title">Add a source</h1><p>Bring in a PDF or image. Once indexed, it becomes available to Ask AI, Notes, and Study.</p></div><span className="page-icon">＋</span></div>
                 {currentDocument && <div className="active-source-banner"><span className="status-dot"/><span>Current source</span><strong>{currentDocument.title}</strong></div>}
                 <div className="upload-options-grid">
                   <article className="upload-option-card"><span className="option-icon">PDF</span><h2>PDF documents</h2><p>Textbooks, class notes, reports, and research papers.</p><label className="primary-button upload-choose">{uploadLoading ? uploadStatus : "Choose a PDF"}<input type="file" accept="application/pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPdf(file); event.target.value = ""; }} disabled={uploadLoading}/></label><small>Up to 20 MB · Text is extracted and indexed</small></article>
                   <article className="upload-option-card"><span className="option-icon">IMG</span><h2>Images & scans</h2><p>Photographed pages and screenshots are read with OCR.</p><label className="secondary-button upload-choose">{uploadLoading ? uploadStatus : "Choose an image"}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); event.target.value = ""; }} disabled={uploadLoading}/></label><small>PNG, JPG, or WebP · Up to 20 MB</small></article>
                 </div>
-                <article className="workspace-card youtube-upload-card"><div><span className="eyebrow">VIDEO LEARNING</span><h2>Import a YouTube lesson</h2><p>We’ll use captions when available. You can paste a transcript if captions are blocked.</p></div><label className="upload-field"><span>YouTube URL</span><input value={youtubeUrl} onChange={(event) => setYoutubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..."/></label><label className="upload-field"><span>Transcript or notes (optional)</span><textarea value={youtubeTranscript} onChange={(event) => setYoutubeTranscript(event.target.value)} placeholder="Paste a transcript or your notes here..."/></label><button className="primary-button" onClick={uploadYoutube} disabled={!youtubeUrl.trim() || uploadLoading}>{uploadLoading ? uploadStatus : youtubeTranscript.trim() ? "Index transcript" : "Import video"}</button></article>
                 <p className="feature-status-text" role="status">{uploadLoading ? uploadStatus : statusMessage || "Your sources stay in this browser workspace."}</p>
                 <section className="workspace-card"><div className="workspace-card-header"><h2>Your sources</h2><span>{recentDocuments.length}</span></div><div className="document-list">{recentDocuments.length ? recentDocuments.map((document) => <div className={`document-item source-row ${currentDocument?.id === document.id ? "active" : ""}`} key={document.id}><button className="source-main" onClick={() => selectDocument(document)} type="button"><strong>{document.title}</strong><small>{document.source_type} · {document.topic}</small><small>{currentDocument?.id === document.id ? "Active source" : "Select this source"}</small></button><div className="source-actions"><button className="tiny-button" onClick={() => { void selectDocument(document); void askQuestion(`Summarize ${document.title} with key ideas, examples, and revision points.`, document); }} type="button">Summarize</button><button className="tiny-button danger" onClick={(event) => deleteSource(document, event)} type="button">Delete</button></div></div>) : <EmptyHint title="Your library is ready" text="Add your first source above. Then ask a question, make study cards, or explore its key concepts."/>}</div></section>
               </section>
@@ -1551,7 +1467,7 @@ function SecondBrainAppContent() {
               </section>
             )}
             {activeSection === "graph" && (
-              <section className="feature-page" aria-labelledby="graph-title"><div className="feature-page-heading"><div><p className="eyebrow">See how your ideas connect</p><h1 id="graph-title">Knowledge graph</h1><p>Explore the concepts extracted from your sources and ask about any connection.</p></div><span className="page-icon">⌘</span></div>{graph.nodes.length ? <><div className="concept-cloud graph-cloud">{graph.nodes.map((node) => <button className="concept-node" key={node.id} onClick={() => askQuestion(`Explain how ${node.name} connects to my uploaded material with an example.`)}><span>{node.name}</span><small>{node.weight}</small></button>)}</div><div className="connection-list">{graphConnections.map((edge) => <div className="connection-row" key={`${edge.from}-${edge.to}-${edge.weight}`}><span>{edge.from}</span><strong>connects to</strong><span>{edge.to}</span></div>)}</div></> : <div className="workspace-card"><EmptyHint title="Your graph starts with a source" text="Upload a PDF, image, or video transcript. We’ll map the key concepts and their connections here." action="Add a source" onClick={() => jumpToSection("upload")}/></div>}</section>
+              <section className="feature-page" aria-labelledby="graph-title"><div className="feature-page-heading"><div><p className="eyebrow">See how your ideas connect</p><h1 id="graph-title">Knowledge graph</h1><p>Explore the concepts extracted from your sources and ask about any connection.</p></div><span className="page-icon">⌘</span></div>{graph.nodes.length ? <><div className="concept-cloud graph-cloud">{graph.nodes.map((node) => <button className="concept-node" key={node.id} onClick={() => askQuestion(`Explain how ${node.name} connects to my uploaded material with an example.`)}><span>{node.name}</span><small>{node.weight}</small></button>)}</div><div className="connection-list">{graphConnections.map((edge) => <div className="connection-row" key={`${edge.from}-${edge.to}-${edge.weight}`}><span>{edge.from}</span><strong>connects to</strong><span>{edge.to}</span></div>)}</div></> : <div className="workspace-card"><EmptyHint title="Your graph starts with a source" text="Upload a PDF or image. We’ll map the key concepts and their connections here." action="Add a source" onClick={() => jumpToSection("upload")}/></div>}</section>
             )}
             {activeSection === "analytics" && (
               <section className="feature-page" aria-labelledby="analytics-title">
@@ -1569,7 +1485,7 @@ function SecondBrainAppContent() {
                 <p className="eyebrow">AI study workspace</p>
                 <h2 className="dashboard-title">One place to upload, understand, and revise your learning material.</h2>
                 <p className="intro-text">
-                  Second Brain turns PDFs, screenshots, YouTube transcripts, and notes into a personal tutor.
+                  Second Brain turns PDFs, screenshots, and notes into a personal tutor.
                   Ask questions, get summaries, create flashcards, find weak topics, and keep everything connected.
                 </p>
                 <div className="intro-actions">
@@ -1780,7 +1696,7 @@ function SecondBrainAppContent() {
               <div className="value-card">
                 <span>01</span>
                 <strong>Source-grounded answers</strong>
-                <p>Answers come from uploaded PDFs, OCR images, YouTube transcripts, and recent memory.</p>
+                <p>Answers come from uploaded PDFs, OCR images, and recent memory.</p>
               </div>
               <div className="value-card">
                 <span>02</span>
@@ -1812,7 +1728,7 @@ function SecondBrainAppContent() {
                 <div className="empty-state">
                   <p className="empty-title">Your knowledge workspace is ready.</p>
                   <p className="empty-copy">
-                    Upload a PDF or YouTube transcript, then ask for summaries, explanations, or revision help.
+                    Upload a PDF or image, then ask for summaries, explanations, or revision help.
                   </p>
                   <div className="starter-grid">
                     {starterPrompts.map((prompt) => (

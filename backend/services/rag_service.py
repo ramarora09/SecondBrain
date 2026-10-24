@@ -483,10 +483,10 @@ def _answer_yesterday_memories(language: str, user_id: str) -> str:
 def _fallback_answer(language: str) -> str:
     if language.lower() == "hinglish":
         return (
-            "Mujhe abhi relevant context nahi mila. Pehle PDF, image, ya YouTube source upload karo, "
+            "Mujhe abhi relevant context nahi mila. Pehle PDF ya image upload karo, "
             "ya thoda specific question poochho."
         )
-    return "I could not find relevant context yet. Upload a PDF, image, or YouTube source, or ask a more specific question."
+    return "I could not find relevant context yet. Upload a PDF or image, or ask a more specific question."
 
 
 def _outside_uploaded_source_answer(question: str, document_title: str | None, language: str) -> str:
@@ -565,6 +565,8 @@ def _is_document_overview_request(question: str) -> bool:
         "document",
         "uploaded source",
         "uploaded notes",
+        "uploaded knowledge",
+        "my knowledge",
         "this file",
         "source",
     ]
@@ -583,6 +585,10 @@ def _is_document_overview_request(question: str) -> bool:
         "summary",
         "summarize",
         "notes",
+        "important concept",
+        "main concept",
+        "key concept",
+        "most important",
     ]
 
     has_source_term = any(term in normalized for term in source_terms)
@@ -970,9 +976,9 @@ def query_knowledge_base(
 
         if active_document is None and any(keyword in question.lower() for keyword in ["pdf", "document", "file", "upload"]):
             answer = (
-                "Mujhe active uploaded source nahi mila. Pehle PDF, image, ya YouTube source select ya upload karo."
+                "Mujhe active uploaded source nahi mila. Pehle PDF ya image select ya upload karo."
                 if language.lower() == "hinglish"
-                else "I could not find an active uploaded source. Upload or select a PDF, image, or YouTube source first."
+                else "I could not find an active uploaded source. Upload or select a PDF or image first."
             )
             return {
                 "question": question,

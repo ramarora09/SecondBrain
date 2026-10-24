@@ -1,6 +1,6 @@
 # Second Brain AI
 
-AI Personal Knowledge Engine with PDF, image OCR, and YouTube ingestion.
+AI Personal Knowledge Engine with PDF and image OCR ingestion.
 
 ## Repo Structure
 

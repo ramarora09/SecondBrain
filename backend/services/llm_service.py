@@ -256,7 +256,7 @@ def answer_question(
     if not context_block and not memory_block:
         if language.lower() == "hinglish":
             return (
-                "Mujhe abhi relevant data nahi mila. Pehle PDF ya YouTube upload karo ya specific question poochho."
+                "Mujhe abhi relevant data nahi mila. Pehle PDF ya image upload karo ya specific question poochho."
             )
         return (
             "I couldn't find relevant knowledge yet. Please upload content or ask a more specific question."

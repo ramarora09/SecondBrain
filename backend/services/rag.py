@@ -22,7 +22,7 @@ def detect_topic(question):
 def query_rag(question, source="all"):
     try:
         if len(stored_chunks) == 0:
-            return {"error": "⚠️ Please upload PDF or YouTube first"}
+            return {"error": "⚠️ Please upload a PDF or image first"}
 
         model = get_model()
 

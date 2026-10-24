@@ -30,7 +30,6 @@ def get_system_status() -> dict:
         "groq": importlib.util.find_spec("groq") is not None,
         "sentence_transformers": importlib.util.find_spec("sentence_transformers") is not None,
         "pypdf": importlib.util.find_spec("pypdf") is not None,
-        "youtube_transcript_api": importlib.util.find_spec("youtube_transcript_api") is not None,
         "pytesseract": importlib.util.find_spec("pytesseract") is not None,
         "pdf2image": importlib.util.find_spec("pdf2image") is not None,
     }
@@ -57,8 +56,6 @@ def get_system_status() -> dict:
         warnings.append("Transformer embeddings are unavailable, so retrieval may fall back to hash embeddings.")
     if embedding_backend == "hash":
         warnings.append("Fast hash embeddings are enabled for quicker uploads and lower startup cost.")
-    if not dependencies["youtube_transcript_api"]:
-        warnings.append("YouTube ingestion needs youtube-transcript-api installed.")
     if not dependencies["pypdf"]:
         warnings.append("PDF ingestion needs pypdf installed.")
     if not dependencies["pytesseract"]:
@@ -71,7 +68,7 @@ def get_system_status() -> dict:
         warnings.append("Image OCR needs a working Tesseract binary on the deployment host.")
 
     llm_ready = dependencies["groq"] and config["groq_api_key_configured"]
-    ingestion_ready = dependencies["pypdf"] and dependencies["youtube_transcript_api"]
+    ingestion_ready = dependencies["pypdf"]
     retrieval_mode = "sentence-transformers" if embedding_backend == "transformer" and embedding_model_ready else "hash"
 
     return {

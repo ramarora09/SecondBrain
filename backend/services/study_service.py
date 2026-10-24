@@ -216,7 +216,7 @@ def build_study_recommendations(analytics_summary: dict, user_id: str = "anonymo
         cards.append(
             {
                 "title": "Build your first knowledge source",
-                "reason": "Upload a PDF, image, or YouTube link so the assistant can answer from your material.",
+                "reason": "Upload a PDF or image so the assistant can answer from your material.",
                 "action_prompt": "Help me decide what to upload first for my learning goals.",
                 "kind": "onboarding",
             }

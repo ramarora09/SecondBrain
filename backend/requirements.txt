@@ -7,7 +7,6 @@ sentence-transformers
 numpy
 PyMuPDF
 pypdf
-youtube-transcript-api
 Pillow
 pytesseract
 pdf2image
