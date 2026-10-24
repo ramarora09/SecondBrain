@@ -30,7 +30,7 @@ def generate_answer(context, question):
 
     response = client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.1-8b-instant"   # 🔥 IMPORTANT FIX
+        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
     )
 
     print("👉 LLM RESPONSE:", response)

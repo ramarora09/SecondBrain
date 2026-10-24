@@ -43,12 +43,12 @@ def _hash_embed(text: str, dimensions: int = 384) -> list[float]:
 def _chunking_profile(text_length: int) -> tuple[int, int]:
     """Choose chunking settings based on document size for faster ingestion."""
     if text_length > 400_000:
-        return 2400, 250
+        return 2800, 260
     if text_length > 180_000:
-        return 1800, 220
+        return 2200, 220
     if text_length > 60_000:
-        return 1400, 180
-    return 900, 140
+        return 1700, 180
+    return 1300, 160
 
 
 def get_model() -> Any:

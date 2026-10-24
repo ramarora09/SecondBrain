@@ -32,7 +32,7 @@ def get_client() -> Any | None:
     if not api_key:
         return None
 
-    _client = Groq(api_key=api_key)
+    _client = Groq(api_key=api_key, timeout=35.0, max_retries=1)
     return _client
 
 
@@ -41,7 +41,7 @@ def complete_text(
     *,
     prompt: str,
     system_prompt: str | None = None,
-    model: str = "llama-3.1-8b-instant",
+    model: str | None = None,
     temperature: float = 0.3,
 ) -> str:
     client = get_client()
@@ -56,12 +56,15 @@ def complete_text(
     messages.append({"role": "user", "content": prompt})
 
     response = client.chat.completions.create(
-        model=model,
+        model=model or os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         messages=messages,
         temperature=temperature,
     )
 
-    return response.choices[0].message.content.strip()
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise RuntimeError("The AI model returned an empty response")
+    return content.strip()
 
 
 # 🔥 SMART LANGUAGE STYLE

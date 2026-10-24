@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from services.database import get_connection
 from services.llm_service import generate_flashcards_with_llm, recommend_study_focus
-from services.vector_store import get_chunk_samples
+from services.vector_store import get_chunk_samples, get_document_chunks
 
 
 def _utcnow() -> datetime:
@@ -18,9 +18,20 @@ def _initial_review_time() -> str:
     return _utcnow().isoformat()
 
 
-def generate_flashcards(limit: int = 5, topic: str | None = None, user_id: str = "anonymous") -> list[dict]:
+def generate_flashcards(
+    limit: int = 5,
+    topic: str | None = None,
+    document_id: int | None = None,
+    user_id: str = "anonymous",
+) -> list[dict]:
     """Generate and persist flashcards from recent chunks."""
-    chunks = get_chunk_samples(limit=max(limit * 3, 10), topic=topic, user_id=user_id)
+    chunks = (
+        get_document_chunks(document_id, limit=max(limit * 3, 10), user_id=user_id)
+        if document_id is not None
+        else get_chunk_samples(limit=max(limit * 3, 10), topic=topic, user_id=user_id)
+    )
+    if topic:
+        chunks = [chunk for chunk in chunks if chunk.get("topic") == topic]
     if not chunks:
         return []
 
@@ -77,19 +88,33 @@ def generate_flashcards(limit: int = 5, topic: str | None = None, user_id: str =
     return persisted
 
 
-def get_due_flashcards(limit: int = 20, user_id: str = "anonymous") -> list[dict]:
+def get_due_flashcards(
+    limit: int = 20,
+    document_id: int | None = None,
+    user_id: str = "anonymous",
+) -> list[dict]:
     """Return flashcards due for review."""
     now = _utcnow().isoformat()
+    document_clause = " AND chunks.document_id = ?" if document_id is not None else ""
+    params: list[object] = [user_id, now]
+    if document_id is not None:
+        params.append(document_id)
+    params.append(limit)
     with get_connection() as connection:
         rows = connection.execute(
-            """
-            SELECT id, topic, question, answer, ease_factor, interval_days, review_count, next_review_at
+            f"""
+            SELECT flashcards.id, flashcards.topic, flashcards.question, flashcards.answer,
+                   flashcards.ease_factor, flashcards.interval_days, flashcards.review_count,
+                   flashcards.next_review_at
             FROM flashcards
-            WHERE user_id = ? AND (next_review_at IS NULL OR next_review_at <= ?)
-            ORDER BY next_review_at ASC, created_at ASC
+            LEFT JOIN chunks ON chunks.id = flashcards.chunk_id
+            WHERE flashcards.user_id = ?
+              AND (flashcards.next_review_at IS NULL OR flashcards.next_review_at <= ?)
+              {document_clause}
+            ORDER BY flashcards.next_review_at ASC, flashcards.created_at ASC
             LIMIT ?
             """,
-            (user_id, now, limit),
+            params,
         ).fetchall()
 
     return [dict(row) for row in rows]

@@ -34,6 +34,7 @@ def create_flashcards(payload: FlashcardGenerateRequest, x_session_id: str | Non
     cards = generate_flashcards(
         limit=payload.limit,
         topic=payload.topic,
+        document_id=payload.document_id,
         user_id=normalize_user_id(payload.user_id or x_session_id),
     )
     if not cards:
@@ -42,10 +43,10 @@ def create_flashcards(payload: FlashcardGenerateRequest, x_session_id: str | Non
 
 
 @router.get("/study/flashcards/due")
-def due_flashcards(x_session_id: str | None = Header(default=None)):
+def due_flashcards(document_id: int | None = None, x_session_id: str | None = Header(default=None)):
     """Return due flashcards for spaced repetition."""
     try:
-        return {"flashcards": get_due_flashcards(user_id=normalize_user_id(x_session_id))}
+        return {"flashcards": get_due_flashcards(document_id=document_id, user_id=normalize_user_id(x_session_id))}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Could not load flashcards: {exc}") from exc
 

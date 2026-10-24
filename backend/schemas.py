@@ -31,6 +31,7 @@ class FlashcardGenerateRequest(BaseModel):
 
     limit: int = Field(default=5, ge=1, le=20)
     topic: str | None = None
+    document_id: int | None = None
     user_id: str | None = None
 
 
