@@ -657,7 +657,7 @@ body { min-height: 100vh; overflow-x: hidden; overflow-y: auto; }
 .main-layout {
   padding: 32px 48px 180px;
   display: flex; flex-direction: column; gap: 40px;
-  max-width: 1400px; width: 100%;
+  max-width: none; width: 100%; min-width: 0;
   animation: fadeUp 600ms ease-out;
 }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
@@ -1286,7 +1286,9 @@ body { min-height: 100vh; overflow-x: hidden; overflow-y: auto; }
 .app-root[data-page="dashboard"] .bottom-grid { display: none; }
 .app-root .bottom-grid { display: none !important; }
 .app-root[data-page="dashboard"] .dashboard-shell > :not(.workspace-intro):not(.capability-grid):not(.next-step-panel) { display: none; }
-.app-root:not([data-page="dashboard"]) .feature-pages { display: block; }
+.app-root:not([data-page="dashboard"]):not([data-page="chat"]) .feature-pages { display: block; }
+.app-root[data-page="chat"] .feature-pages { display: none !important; }
+.app-root[data-page="chat"] .main-layout { gap: 24px; }
 .feature-pages { display: none; min-height: 62vh; animation: pageEnter 420ms cubic-bezier(.2,.7,.2,1) both; }
 .feature-page { max-width: 1120px; margin: 10px auto 48px; display: flex; flex-direction: column; gap: 24px; animation: pageEnter 420ms cubic-bezier(.2,.7,.2,1) both; }
 .feature-page > * { animation: cardEnter 460ms cubic-bezier(.2,.7,.2,1) both; }
